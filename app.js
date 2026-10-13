@@ -1,5 +1,6 @@
 "use strict";
-// Renders the page from the two inline JSON blocks written by build_site.py. Mirrors estimate.py's model.
+// Renders the page from the two inline JSON blocks written by build_site.py (per-hood ads load from data/ads/).
+// Mirrors estimate.py's model. The selected neighborhood lives in location.hash (#hood=<slug>).
 
 const S = JSON.parse(document.getElementById("snapshot").textContent);
 const H = JSON.parse(document.getElementById("history-data").textContent);
@@ -15,7 +16,12 @@ const pct = v => faPct.format(v) + "٪";
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const $ = id => document.getElementById(id);
 const UNIT = "میلیون تومان";
-const SIDE = {true: "جنوبی", false: "شمالی"};
+const DEFAULT_HOOD = "sazman-barname-jonubi";
+const MIN_PRICED = S.thresholds.priced;  // fewer clean ads → no own hood effect, no reference price
+const hoodBySlug = Object.fromEntries(S.hoods.map(h => [h.slug, h]));
+let hood = null;        // selected slug
+let ADS = [];           // clean ads of the selected hood
+const adsCache = {};
 const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
 const numOrDash = v => v === null || v === undefined ? "—" : fa0.format(v);
 
@@ -26,8 +32,25 @@ function median(xs) {
 
 // ---- model (mirror of estimate.flights / estimate.row) ---------------------
 const flights = (floor, elevator) => (elevator || !floor || floor < 2) ? 0 : floor - 1;
-const rowOf = f => [1, S.year - f.year_built, Math.log(f.area_m2 / S.model.ref_area), +f.parking, +f.elevator,
-  flights(f.floor, f.elevator), +f.renovated, +f.complex, +f.south];
+// One evaluator per regressor name of model.FEATURES; the design row is built from S.model.names, so a model change
+// in Python either just works (new hood) or fails loudly here (new feature) instead of silently mispricing.
+const FEATURES = {
+  "const": () => 1,
+  "age": f => S.year - f.year_built,
+  [`log(size/${S.model.ref_area})`]: f => Math.log(f.area_m2 / S.model.ref_area),
+  "parking": f => +f.parking,
+  "elevator": f => +f.elevator,
+  "flights": f => flights(f.floor, f.elevator),
+  "renovated": f => +f.renovated,
+  "complex": f => +f.complex,
+};
+const feature = name => {
+  if (name.startsWith("hood:")) return f => +(f.hood === name.slice(5));
+  if (!FEATURES[name]) throw new Error(`app.js: no evaluator for model feature ${name}`);
+  return FEATURES[name];
+};
+const DESIGN = S.model.names.map(feature);
+const rowOf = f => DESIGN.map(g => g(f));
 const predictPpm = f => Math.exp(rowOf(f).reduce((a, v, i) => a + v * S.model.beta[i], 0));
 
 // ---- svg helpers -------------------------------------------------------------
@@ -58,20 +81,100 @@ function fillRows(tbody, rows) {
   tbody.innerHTML = rows.map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>").join("");
 }
 
+// ---- neighborhood helpers ------------------------------------------------------
+const H_ = () => hoodBySlug[hood];
+const priced = h => h.ref_ppm !== null;
+const zoneMedian = () => S.zone.median_ref_ppm ?? median(S.hoods.filter(priced).map(h => h.ref_ppm));
+const hoodRows = slug => H.filter(r => r.hoods[slug] !== undefined);
+const splitsBelow = equiv => [500, 1000, 1500, 2000].filter(d => d < equiv).map(d => [d, (equiv - d) * S.rate]);
+
 // ---- static sections ---------------------------------------------------------
-function renderHeadline() {
+function renderSub() {
   $("sub").textContent = `برآورد از آگهی‌های عمومی دیوار · آخرین برداشت: ${toFa(S.jalali)} · `
-    + `${fa0.format(S.counts.peers)} آگهی تمیز از ${fa0.format(S.counts.ads)} آگهی`;
-  for (const side of ["south", "north"]) {
-    $(`ref-${side}`).innerHTML = `${fa0.format(S.reference[side].equiv)} <small>${UNIT} رهن کامل</small>`;
-    if (H.length >= 2) {
-      const key = `ref_${side}_equiv`, prev = H[H.length - 2][key], last = H[H.length - 1][key];
-      $(`ref-${side}-change`).textContent = `نسبت به برداشت قبل: ${pct((last / prev - 1) * 100)}`;
-    }
-  }
-  $("median-ppm").innerHTML = `<span>جنوبی ${fa2.format(S.medians.south.ppm)}</span> / `
-    + `<span>شمالی ${fa2.format(S.medians.north.ppm)}</span> <small>میلیون</small>`;
+    + `${fa0.format(S.counts.peers)} آگهی تمیز از ${fa0.format(S.counts.ads)} آگهی در ${fa0.format(S.zone.hoods_with_data)} محله`;
   $("built-on").textContent = `ساخته‌شده در ${toFa(S.jalali)}`;
+  $("zone-median").innerHTML = `${fa1.format(zoneMedian())} <small>میلیون/متر، واحد مرجع</small>`;
+  $("zone-hoods").textContent = `در ${fa0.format(S.zone.hoods_with_data)} محله با داده`;
+}
+
+function renderHeadline() {
+  const h = H_();
+  $("hood-name").textContent = h.name;
+  $("ref-hood-change").textContent = "";
+  if (priced(h)) {
+    $("ref-hood").innerHTML = `${fa0.format(h.ref_equiv)} <small>${UNIT} رهن کامل</small>`;
+    const rows = hoodRows(h.slug);
+    if (rows.length >= 2) {
+      const prev = rows[rows.length - 2].hoods[h.slug], last = rows[rows.length - 1].hoods[h.slug];
+      $("ref-hood-change").textContent = `نسبت به برداشت قبل: ${pct((last / prev - 1) * 100)}`;
+    }
+  } else {
+    $("ref-hood").innerHTML = `<small>داده کافی نیست (${fa0.format(h.n)} آگهی)</small>`;
+  }
+  $("median-ppm").innerHTML = h.n ? `${fa2.format(h.median_ppm)} <small>میلیون</small>` : "—";
+  $("median-equiv").textContent = h.n ? `میانهٔ رهن کامل ${fa0.format(h.median_equiv)} میلیون، ${fa0.format(h.n)} آگهی` : "";
+}
+
+function renderPanel() {
+  const h = H_(), p = $("hood-panel");
+  if (!priced(h)) {
+    p.innerHTML = `<h3>${esc(h.name)}</h3><p>${fa0.format(h.n)} آگهی تمیز این هفته</p><p>داده کافی نیست.</p>`;
+    return;
+  }
+  const rows = hoodRows(h.slug);
+  let wow = "";
+  if (rows.length >= 2) {
+    const prev = rows[rows.length - 2].hoods[h.slug], last = rows[rows.length - 1].hoods[h.slug];
+    wow = `<p>نسبت به برداشت قبل: ${pct((last / prev - 1) * 100)}</p>`;
+  }
+  const nb = h.neighbors.map(s => hoodBySlug[s])
+    .map(o => `<li><a href="#hood=${o.slug}">${esc(o.name)}</a>: ${fa1.format(o.ref_ppm)} میلیون/متر</li>`).join("");
+  p.innerHTML = `<h3>${esc(h.name)}</h3>`
+    + `<p>${fa0.format(h.n)} آگهی تمیز این هفته${h.low_data ? " (کم؛ عدد کم‌اطمینان است)" : ""}</p>`
+    + `<p>میانهٔ آگهی‌ها: <strong>${fa0.format(h.median_equiv)}</strong> میلیون رهن کامل `
+    + `(ودیعه ${fa0.format(h.median_deposit)} + اجاره ${fa1.format(h.median_rent)})، ${fa0.format(h.median_area)} متر</p>`
+    + `<p>واحد مرجع: <span class="big">${fa0.format(h.ref_equiv)}</span> میلیون رهن کامل (${fa1.format(h.ref_ppm)} میلیون/متر)</p>`
+    + (myEquiv(h) === null ? "" : `<p>واحد شما در این محله: <strong>${fa0.format(myEquiv(h))}</strong> میلیون رهن کامل</p>`)
+    + `<p class="note">۹۵٪ آگهی‌های چنین واحدی: ${fa0.format(h.band_one[0])} تا ${fa0.format(h.band_one[1])}</p>` + wow
+    + `<p>همین مبلغ به صورت ودیعه + اجاره:</p><ul>`
+    + splitsBelow(h.ref_equiv).map(([d, r]) => `<li>${fa0.format(d)} + ${fa1.format(r)} در ماه</li>`).join("") + "</ul>"
+    + (nb ? `<p>محله‌های همسایه:</p><ul>${nb}</ul>` : "")
+    + `<a class="btn" href="#calc">قیمت واحد خودم در ${esc(h.name)}</a>`;
+}
+
+function tipHtml(h) {
+  const rows = [["آگهی تمیز", fa0.format(h.n)]];
+  if (h.n) rows.push(["میانهٔ رهن کامل", `${fa0.format(h.median_equiv)} میلیون`],
+    ["میانهٔ ودیعه", `${fa0.format(h.median_deposit)} میلیون`], ["میانهٔ اجاره", `${fa1.format(h.median_rent)} میلیون`],
+    ["میانهٔ متراژ", `${fa0.format(h.median_area)} متر`], ["میانهٔ عمر بنا", `${fa0.format(h.median_age)} سال`],
+    ["میانهٔ هر متر", `${fa2.format(h.median_ppm)} میلیون`]);
+  if (priced(h)) rows.push(["واحد مرجع ۷۵ متری", `${fa0.format(h.ref_equiv)} میلیون`]);
+  const mine = myEquiv(h);
+  if (mine !== null) rows.push(["<strong>واحد شما</strong>", `${fa0.format(mine)} میلیون`]);
+  return `<b>${esc(h.name)}</b><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`
+    + (priced(h) ? (h.low_data ? `<span class="note">کمتر از ${fa0.format(S.thresholds.solid)} آگهی: کم‌اطمینان</span>` : "")
+                 : `<span class="note">داده کافی نیست</span>`);
+}
+
+function initMapTips() {
+  const box = $("map-svg"), tip = $("hood-tip");
+  const show = (a, ev) => {
+    tip.innerHTML = tipHtml(hoodBySlug[a.dataset.slug]);
+    tip.hidden = false;
+    const r = box.getBoundingClientRect();
+    let x, y;
+    if (ev && ev.clientX !== undefined) { x = ev.clientX - r.left; y = ev.clientY - r.top; }
+    else { const c = a.querySelector("circle").getBoundingClientRect(); x = c.left + c.width / 2 - r.left; y = c.top + c.height / 2 - r.top; }
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(0, x > r.width / 2 ? x - w - 14 : x + 14)}px`;
+    tip.style.top = `${Math.max(0, Math.min(y - h / 2, r.height - h))}px`;
+  };
+  for (const a of box.querySelectorAll("a.hood")) {
+    a.addEventListener("mousemove", ev => show(a, ev));
+    a.addEventListener("focus", () => show(a));
+    a.addEventListener("mouseleave", () => { tip.hidden = true; });
+    a.addEventListener("blur", () => { tip.hidden = true; });
+  }
 }
 
 function renderEffects() {
@@ -115,29 +218,31 @@ function renderMarket() {
 }
 
 function renderHistory() {
+  const slug = hood, zm = v => v === null || v === undefined ? "—" : fa2.format(v);
   fillRows($("history-table").tBodies[0], H.map(h => [toFa(h.jalali), fa0.format(h.peers),
-    fa0.format(h.ref_south_equiv), fa0.format(h.ref_north_equiv),
-    fa2.format(h.median_south_ppm), fa2.format(h.median_north_ppm)]));
-  if (H.length < 2) return;
+    numOrDash(h.hoods[slug]), zm(h.zone_median_ref_ppm)]));
+  const rows = hoodRows(slug);
+  if (rows.length < 2) { $("history-chart").innerHTML = ""; return; }
   const W = 600, Ht = 220, L = 60, R = 20, T = 24, B = 40;
-  const vals = H.flatMap(h => [h.ref_south_equiv, h.ref_north_equiv]);
+  const vals = rows.map(h => h.hoods[slug]);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi === lo) { lo -= 1; hi += 1; }
-  const t = H.map(h => Date.parse(h.date)), x = scale(t[0], t[t.length - 1], L, W - R), y = scale(lo, hi, Ht - B, T);
-  const series = (key, cls) => `<polyline class="${cls}" points="${H.map((h, i) => `${x(t[i]).toFixed(1)},${y(h[key]).toFixed(1)}`).join(" ")}"/>`
-    + H.map((h, i) => `<circle class="${cls}" cx="${x(t[i]).toFixed(1)}" cy="${y(h[key]).toFixed(1)}" r="3"/>`).join("");
+  const t = rows.map(h => Date.parse(h.date)), x = scale(t[0], t[t.length - 1], L, W - R), y = scale(lo, hi, Ht - B, T);
+  const pts = rows.map((h, i) => [x(t[i]).toFixed(1), y(h.hoods[slug]).toFixed(1)]);
   $("history-chart").innerHTML = svg(W, Ht,
-    line("axis", L, Ht - B, W - R, Ht - B) + series("ref_south_equiv", "s-south") + series("ref_north_equiv", "s-north")
-    + txt(L, Ht - B + 18, toFa(H[0].jalali), "start") + txt(W - R, Ht - B + 18, toFa(H[H.length - 1].jalali), "end")
+    line("axis", L, Ht - B, W - R, Ht - B)
+    + `<polyline class="s-hood" points="${pts.map(p => p.join(",")).join(" ")}"/>`
+    + pts.map(([cx, cy]) => `<circle class="s-hood" cx="${cx}" cy="${cy}" r="3"/>`).join("")
+    + txt(L, Ht - B + 18, toFa(rows[0].jalali), "start") + txt(W - R, Ht - B + 18, toFa(rows[rows.length - 1].jalali), "end")
     + txt(L - 6, y(hi) + 4, fa0.format(hi), "end") + txt(L - 6, y(lo) + 4, fa0.format(lo), "end")
-    + txt(L, T - 8, "— مرجع جنوبی", "start", "s-south") + txt(L + 110, T - 8, "— مرجع شمالی", "start", "s-north"),
+    + txt(L, T - 8, `— واحد مرجع، ${esc(H_().name)}`, "start", "s-hood"),
     "روند واحد مرجع");
 }
 
 function renderMethodCounts() {
   const c = S.counts, d = c.dropped;
   $("method-counts").textContent = `در این برداشت ${fa0.format(c.peers)} آگهی از ${fa0.format(c.ads)} آگهی ماند `
-    + `(${fa0.format(c.south)} جنوبی، ${fa0.format(c.north)} شمالی). حذف‌شده‌ها: ناقص ${fa0.format(d.missing)}، `
+    + `(${fa0.format(S.zone.hoods_with_data)} محله با دست‌کم ۵ آگهی). حذف‌شده‌ها: ناقص ${fa0.format(d.missing)}، `
     + `غیر واحد کامل ${fa0.format(d.not_whole_flat)}، بدون قیمت ${fa0.format(d.zero)}، تکراری ${fa0.format(d.dup)}، `
     + `پرت ${fa0.format(d.outlier)}.`;
 }
@@ -152,10 +257,63 @@ function renderData() {
 function readFlat() {
   return {area_m2: parseFloat($("area").value), year_built: parseInt($("built").value, 10),
           floor: parseInt($("floor").value, 10) || 0, elevator: $("elevator").checked, parking: $("parking").checked,
-          renovated: $("renovated").checked, complex: false, south: $("side-south").checked};
+          renovated: $("renovated").checked, complex: false, hood: $("hood").value};
 }
 
-const similarTo = f => a => a.south === f.south && Math.abs(a.year_built - f.year_built) <= 6
+// The map form (m-*) and the calculator form share one flat: editing either copies its values into the other.
+const FLAT_FIELDS = ["area", "built", "floor", "elevator", "parking", "renovated"];
+
+function syncFlat(fromMap) {
+  for (const id of FLAT_FIELDS) {
+    const [src, dst] = fromMap ? [$(`m-${id}`), $(id)] : [$(id), $(`m-${id}`)];
+    if (src.type === "checkbox") dst.checked = src.checked; else dst.value = src.value;
+  }
+}
+
+// Full-deposit estimate of the user's flat in a priced hood (null when the flat is incomplete or the hood unpriced).
+function myEquiv(h) {
+  const f = readFlat();
+  if (!priced(h) || !(f.area_m2 > 0) || !Number.isFinite(f.year_built)) return null;
+  return Math.round(predictPpm({...f, hood: h.slug}) * f.area_m2);
+}
+
+let mapMine = false;  // bubbles show the user's flat once the flat form is edited; the reset button turns it off
+const FLAT_DEFAULTS = () => ({area: 75, built: S.year - 15, floor: 3, elevator: true, parking: true, renovated: false});
+
+function resetFlat() {
+  const d = FLAT_DEFAULTS();
+  for (const id of FLAT_FIELDS) {
+    const el = $(`m-${id}`);
+    if (el.type === "checkbox") el.checked = d[id]; else el.value = d[id];
+  }
+  syncFlat(true);
+  mapMine = false;
+}
+
+function renderMapLabels() {
+  const mine = mapMine;
+  $("map-reset").hidden = !mine;
+  const vals = [];
+  for (const a of document.querySelectorAll("a.hood")) {
+    const t = a.querySelector("text.val");
+    if (!t) continue;
+    t.dataset.median ??= t.textContent;
+    const h = hoodBySlug[a.dataset.slug], v = mine ? myEquiv(h) : null;
+    if (v !== null) vals.push([v, h]);
+    t.textContent = v === null ? t.dataset.median : fa0.format(v);
+    t.classList.toggle("mine", v !== null);
+  }
+  const note = $("map-mode-note");
+  if (!mine) { note.textContent = ""; return; }
+  if (!vals.length) { note.textContent = "متراژ و سال ساخت را وارد کنید."; return; }
+  vals.sort((x, y) => x[0] - y[0]);
+  const [lo, hi] = [vals[0], vals[vals.length - 1]];
+  note.textContent = `عدد هر دایره: رهن کامل برآوردی واحد شما در آن محله (میلیون تومان). `
+    + `از ${fa0.format(lo[0])} در ${lo[1].name} تا ${fa0.format(hi[0])} در ${hi[1].name}؛ `
+    + `محله‌های با کمتر از ${fa0.format(MIN_PRICED)} آگهی برآورد ندارند.`;
+}
+
+const similarTo = f => a => a.hood === f.hood && Math.abs(a.year_built - f.year_built) <= 6
   && Math.abs(a.area_m2 - f.area_m2) <= 15;
 
 let cur = null;  // {equiv, rate} of the last valid calculator run, read by the deposit slider
@@ -173,14 +331,16 @@ function renderCalc() {
     return;
   }
   const ppm = predictPpm(f), equiv = Math.round(ppm * f.area_m2);
-  const sim = S.ads.filter(similarTo(f));
+  const sim = ADS.filter(similarTo(f));
   const exact = a => a.deposit_m + a.rent_m / S.rate;  // equiv_m / ppm in the JSON are rounded
   const simLine = sim.length
-    ? `میانهٔ ${fa0.format(sim.length)} آگهی مشابه (همان سمت، ±۶ سال، ±۱۵ متر): `
+    ? `میانهٔ ${fa0.format(sim.length)} آگهی مشابه (همین محله، ±۶ سال، ±۱۵ متر): `
       + `${fa0.format(median(sim.map(exact)))} میلیون (${fa2.format(median(sim.map(a => exact(a) / a.area_m2)))} میلیون/متر)`
     : "آگهی مشابهی نیست";
+  const thin = priced(hoodBySlug[f.hood]) ? ""
+    : `<p class="note">این محله کمتر از ${fa0.format(MIN_PRICED)} آگهی دارد؛ برآورد با سطح قیمت محلهٔ مبنا (${esc(hoodBySlug[S.model.baseline].name)}) است.</p>`;
   out.innerHTML = `<p>معادل رهن کامل: <strong>${fa0.format(equiv)} ${UNIT}</strong> (${fa2.format(ppm)} میلیون/متر)</p>`
-    + `<p>${simLine}</p>`;
+    + `<p>${simLine}</p>` + thin;
   $("rate-note").textContent = `هر ۱۰۰ میلیون تومان ودیعه ≈ ${faM1.format(rate * 100)} میلیون اجارهٔ ماهانه (نرخ ${faM1.format(rate * 100)}٪). `
     + `مدل با نرخ ۳٪ (میانهٔ نرخ خود آگهی‌دهندگان در ${fa0.format(S.poster_rate.n)} آگهی قابل تبدیل) برازش شده؛ `
     + `نرخ انتخابی فقط تقسیم ودیعه/اجاره را تغییر می‌دهد.`;
@@ -211,10 +371,8 @@ function renderSplit() {
 }
 
 function renderScatter(f, ppm, sim) {
-  const ads = S.ads.filter(a => a.south === f.south), isSim = new Set(sim), cls = f.south ? "s-south" : "s-north";
-  $("calc").classList.toggle("side-south", f.south);
-  $("calc").classList.toggle("side-north", !f.south);
-  $("scatter-title").textContent = `واحد شما در میان ${fa0.format(ads.length)} آگهی ${SIDE[f.south]}`;
+  const ads = ADS, isSim = new Set(sim);
+  $("scatter-title").textContent = `واحد شما در میان ${fa0.format(ads.length)} آگهی ${hoodBySlug[f.hood].name}`;
   const W = 600, Ht = 300, L = 50, R = 15, T = 26, B = 44;
   const yrs = ads.map(a => a.year_built), x0 = Math.min(...yrs, f.year_built), x1 = Math.max(...yrs, f.year_built, S.year);
   const vals = ads.map(a => a.ppm), lo = Math.floor(Math.min(...vals, ppm) / 5) * 5, hi = Math.ceil(Math.max(...vals, ppm) / 5) * 5;
@@ -223,7 +381,7 @@ function renderScatter(f, ppm, sim) {
   const yt = ticks(lo, hi, 5).map(v => line("grid", L, y(v), W - R, y(v)) + txt(L - 8, y(v) + 4, fa0.format(v), "end")).join("");
   let curve = "";
   for (let yr = x0; yr <= x1; yr++) curve += `${x(yr).toFixed(1)},${y(predictPpm({...f, year_built: yr})).toFixed(1)} `;
-  const pts = ads.map(a => `<circle class="pt ${cls}${isSim.has(a) ? " sim" : ""}" cx="${x(a.year_built).toFixed(1)}" cy="${y(a.ppm).toFixed(1)}" r="3.5">`
+  const pts = ads.map(a => `<circle class="pt s-hood${isSim.has(a) ? " sim" : ""}" cx="${x(a.year_built).toFixed(1)}" cy="${y(a.ppm).toFixed(1)}" r="3.5">`
     + `<title>${esc(`${fa0.format(a.area_m2)} متر، ساخت ${toFa(a.year_built)}، طبقهٔ ${numOrDash(a.floor)}: ${fa0.format(a.equiv_m)} میلیون (${fa2.format(a.ppm)} میلیون/متر)`)}</title></circle>`).join("");
   $("scatter").innerHTML = svg(W, Ht, yt + xt
     + line("axis", L, Ht - B, W - R, Ht - B) + line("axis", L, T, L, Ht - B)
@@ -236,9 +394,8 @@ function renderScatter(f, ppm, sim) {
 let sortKey = "published_days", sortDir = 1;
 
 function renderAds() {
-  const side = $("ads-side").value, f = readFlat();
-  let ads = S.ads.filter(a => side === "all" || a.south === (side === "south"));
-  if ($("ads-similar").checked) ads = ads.filter(similarTo(f));
+  let ads = [...ADS];
+  if ($("ads-similar").checked) ads = ads.filter(similarTo(readFlat()));
   ads.sort((a, b) => {
     const x = a[sortKey], y = b[sortKey];
     if (x === null || x === undefined) return (y === null || y === undefined) ? 0 : 1;  // nulls last
@@ -246,29 +403,84 @@ function renderAds() {
     return (x - y) * sortDir;
   });
   const yes = v => v ? "✓" : "—";
-  fillRows($("ads-table").tBodies[0], ads.map(a => [SIDE[a.south], fa0.format(a.area_m2), toFa(a.year_built),
+  fillRows($("ads-table").tBodies[0], ads.map(a => [fa0.format(a.area_m2), toFa(a.year_built),
     numOrDash(a.floor), yes(a.parking), yes(a.elevator), yes(a.renovated), fa0.format(a.deposit_m), numOrDash(a.rent_m),
     fa0.format(a.equiv_m), fa2.format(a.ppm), pct(a.vs_fit_pct), numOrDash(a.published_days),
     `<a href="${esc(a.url)}" target="_blank" rel="noopener">دیوار</a>`]));
-  $("ads-count").textContent = `${fa0.format(ads.length)} از ${fa0.format(S.ads.length)} آگهی`;
+  $("ads-hood").textContent = H_().name;
+  $("ads-count").textContent = `${fa0.format(ads.length)} از ${fa0.format(ADS.length)} آگهی`;
   for (const th of document.querySelectorAll("#ads-table th[data-key]"))
     th.dataset.sort = th.dataset.key === sortKey ? (sortDir > 0 ? "asc" : "desc") : "";
 }
 
-function init() {
-  const built = $("built");
-  built.max = S.year;
-  built.value = S.year - 15;
+// ---- neighborhood selection ------------------------------------------------------
+function loadAds(slug) {
+  if (adsCache[slug]) return Promise.resolve(adsCache[slug]);
+  if (!hoodBySlug[slug].n) return Promise.resolve(adsCache[slug] = []);
+  return fetch(`data/ads/${slug}.json`).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }).then(ads => (adsCache[slug] = ads));
+}
+
+const update = () => { renderCalc(); renderAds(); };
+
+function selectHood(slug) {
+  if (!hoodBySlug[slug] || slug === hood) return;
+  hood = slug;
+  for (const a of document.querySelectorAll("a.hood")) a.classList.toggle("selected", a.dataset.slug === slug);
+  $("hood").value = slug;
+  renderPanel();
   renderHeadline();
+  renderHistory();
+  ADS = [];
+  fillRows($("ads-table").tBodies[0], []);
+  $("ads-hood").textContent = H_().name;
+  $("ads-count").textContent = "در حال بارگذاری…";
+  loadAds(slug).then(ads => {
+    if (hood !== slug) return;  // a later click won the race
+    ADS = ads;
+    update();
+  }).catch(() => {
+    if (hood !== slug) return;
+    $("ads-count").textContent = "آگهی‌های این محله بارگذاری نشد";
+  });
+}
+
+function applyHash() {
+  const m = location.hash.match(/^#hood=([\w-]+)$/);
+  if (m && hoodBySlug[m[1]]) selectHood(m[1]);
+  else if (hood === null) selectHood(hoodBySlug[DEFAULT_HOOD] ? DEFAULT_HOOD : S.hoods[0].slug);
+}
+
+function init() {
+  for (const id of ["built", "m-built"]) $(id).max = S.year;
+  resetFlat();
+  $("hood").innerHTML = [...S.hoods].sort((a, b) => a.name.localeCompare(b.name, "fa"))
+    .map(h => `<option value="${h.slug}">${esc(h.name)}${h.n ? ` (${fa0.format(h.n)})` : ""}</option>`).join("");
+  renderSub();
   renderEffects();
   renderMarket();
-  renderHistory();
   renderMethodCounts();
   renderData();
-  const update = () => { renderCalc(); renderAds(); };
-  $("calc-form").addEventListener("input", update);
+  initMapTips();
+  const flatChanged = () => { renderMapLabels(); renderPanel(); };
+  $("calc-form").addEventListener("input", ev => {
+    if (ev.target.id === "hood") return;
+    syncFlat(false);
+    if (FLAT_FIELDS.includes(ev.target.id)) mapMine = true;
+    update();
+    flatChanged();
+  });
+  $("map-flat").addEventListener("input", ev => {
+    syncFlat(true);
+    mapMine = true;
+    update();
+    flatChanged();
+  });
+  $("map-reset").addEventListener("click", () => { resetFlat(); update(); flatChanged(); });
+  $("hood").addEventListener("change", () => { location.hash = `hood=${$("hood").value}`; });
   $("dep").addEventListener("input", renderSplit);
-  $("ads-side").addEventListener("change", renderAds);
   $("ads-similar").addEventListener("change", renderAds);
   for (const th of document.querySelectorAll("#ads-table th[data-key]")) {
     th.addEventListener("click", () => {
@@ -277,7 +489,8 @@ function init() {
       renderAds();
     });
   }
-  update();
+  window.addEventListener("hashchange", applyHash);
+  applyHash();
 }
 
 init();
