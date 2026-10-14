@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>سیستم طراحی — اجارهٔ غرب تهران</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<style>.sw{display:inline-block;width:72px;margin:4px;font-size:.7rem;text-align:center;direction:ltr}.sw i{display:block;height:40px;border-radius:6px;border:1px solid var(--border)}.bar{height:12px;background:var(--accent);margin:2px 0;border-radius:2px}.rad{display:inline-block;width:64px;height:64px;margin:4px;background:var(--accent-soft);border:1px solid var(--accent)}.demo{border:1px dashed var(--border);border-radius:12px;padding:12px;margin:8px 0}</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" hidden>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+<symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+</svg>
+<main class="view">
+<h1>سیستم طراحی</h1>
+<p class="muted">نمونهٔ زندهٔ هر مؤلفه با همان کلاس‌های سایت. مشخصات کامل در DESIGN.md.</p>
+
+<h2>رنگ‌ها</h2>
+<div>
+<span class="sw"><i style="background:var(--bg)"></i>--bg</span><span class="sw"><i style="background:var(--surface)"></i>--surface</span><span class="sw"><i style="background:var(--surface-2)"></i>--surface-2</span><span class="sw"><i style="background:var(--fg)"></i>--fg</span><span class="sw"><i style="background:var(--muted)"></i>--muted</span><span class="sw"><i style="background:var(--border)"></i>--border</span><span class="sw"><i style="background:var(--accent)"></i>--accent</span><span class="sw"><i style="background:var(--accent-soft)"></i>--accent-soft</span><span class="sw"><i style="background:var(--pos)"></i>--pos</span><span class="sw"><i style="background:var(--neg)"></i>--neg</span><span class="sw"><i style="background:var(--warn)"></i>--warn</span><span class="sw"><i style="background:var(--warn-soft)"></i>--warn-soft</span><span class="sw"><i style="background:var(--me)"></i>--me</span>
+</div>
+<h3>ردهٔ نقشه</h3>
+<div>
+<span class="sw"><i style="background:var(--q1)"></i>q1 <b style="color:var(--q-ink-lo)">۱٫۷</b></span><span class="sw"><i style="background:var(--q2)"></i>q2 <b style="color:var(--q-ink-lo)">۲٫۰</b></span><span class="sw"><i style="background:var(--q3)"></i>q3 <b style="color:var(--q-ink-lo)">۲٫۳</b></span><span class="sw"><i style="background:var(--q4)"></i>q4 <b style="color:var(--q-ink-hi)">۲٫۷</b></span><span class="sw"><i style="background:var(--q5)"></i>q5 <b style="color:var(--q-ink-hi)">۳٫۲</b></span>
+</div>
+
+<h2>تایپوگرافی</h2>
+<p style="font-size:var(--fs-2xl);font-weight:800;line-height:1.1;margin:0">۲٬۰۷۸ — 2xl</p>
+<p style="font-size:var(--fs-xl);font-weight:700;margin:0">عنوان صفحه — xl</p>
+<p style="font-size:var(--fs-lg);font-weight:700;margin:0">عنوان بخش — lg</p>
+<p style="margin:0">متن اصلی — md</p>
+<p style="font-size:var(--fs-sm);margin:0">متن کوچک — sm</p>
+<p style="font-size:var(--fs-xs);margin:0">برچسب — xs</p>
+
+<h2>فاصله و گوشه</h2>
+<div dir="ltr"><div class="bar" style="width:4px"></div><div class="bar" style="width:8px"></div><div class="bar" style="width:12px"></div><div class="bar" style="width:16px"></div><div class="bar" style="width:24px"></div><div class="bar" style="width:32px"></div><div class="bar" style="width:48px"></div></div>
+<span class="rad" style="border-radius:var(--r-sm)"></span><span class="rad" style="border-radius:var(--r-md)"></span><span class="rad" style="border-radius:var(--r-lg)"></span><span class="rad" style="border-radius:var(--r-pill)"></span>
+
+<h2>نوار برنامه</h2>
+<div class="demo">
+<header class="appbar" style="position:static"><span class="appbar__title">اجارهٔ غرب تهران</span><span class="chip chip--static">برداشت ۱۴۰۵/۰۷/۲۱</span></header>
+<header class="appbar" style="position:static"><button type="button" class="iconbtn" aria-label="بازگشت"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button><span class="appbar__title">محلهٔ واحد شما</span><span class="appbar__step">۱ از ۲</span></header>
+</div>
+
+<h2>دکمه‌ها</h2>
+<div class="demo">
+<a class="btn btn--primary btn--block" href="#">وارد کردن مشخصات واحد</a>
+<button type="button" class="btn btn--secondary btn--block">انتخاب محله روی نقشه</button>
+<button type="button" class="btn btn--text"><svg class="icon" aria-hidden="true"><use href="#i-locate"/></svg>استفاده از موقعیت من</button>
+<button type="button" class="btn btn--primary" disabled>غیرفعال</button>
+<button type="button" class="iconbtn" aria-label="بستن"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+</div>
+
+<h2>فیلد</h2>
+<div class="demo">
+<div class="field"><label for="d1">متراژ</label><div class="field__box"><input id="d1" type="text" inputmode="numeric" placeholder="مثلاً ۷۵"><span class="field__unit">متر</span></div></div>
+<div class="field"><label for="d2">متراژ</label><div class="field__box"><input id="d2" type="text" value="۱۵۰"><span class="field__unit">متر</span></div><p class="field__hint">مدل با آگهی‌های ۴۰ تا ۱۱۰ متری ساخته شده؛ برای این متراژ دقت کمتر است.</p></div>
+<div class="field field--error"><label for="d3">سال ساخت</label><div class="field__box"><input id="d3" type="text" value="۱۲۰۰"></div><p class="field__hint">دو رقم هم کافی است: ۹۰ یعنی ۱۳۹۰</p><p class="field__msg">سال ساخت را بین ۱۳۰۰ و ۱۴۰۵ وارد کنید.</p></div>
+<div class="field"><span class="field__label">طبقه</span><div class="stepper" role="group" aria-label="طبقه"><button type="button" class="iconbtn" aria-label="یک طبقه پایین‌تر"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg></button><output>همکف</output><button type="button" class="iconbtn" aria-label="یک طبقه بالاتر"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div></div>
+<div class="field"><div class="stepper" role="group" aria-label="طبقه"><button type="button" class="iconbtn" aria-label="یک طبقه پایین‌تر"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg></button><output>۳</output><button type="button" class="iconbtn" aria-label="یک طبقه بالاتر"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div></div>
+</div>
+
+<h2>چیپ</h2>
+<div class="demo">
+<div class="chips"><button type="button" class="chip" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>بازسازی‌شده</button><button type="button" class="chip" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>پارکینگ</button><a class="chip" href="#">گیشا</a><span class="chip chip--static">ایستا</span></div>
+<div class="chips" role="radiogroup" aria-label="مرتب‌سازی"><button type="button" class="chip" role="radio" aria-checked="true">شبیه‌ترین</button><button type="button" class="chip" role="radio" aria-checked="false">ارزان‌ترین</button><button type="button" class="chip" role="radio" aria-checked="false">تازه‌ترین</button></div>
+</div>
+
+<h2>جستجو و ردیف فهرست</h2>
+<div class="demo">
+<div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input type="search" placeholder="نام محله یا خیابان" aria-label="جستجو"></div>
+<ul class="list">
+<li><button type="button" class="row"><span class="row__swatch q4"></span><span class="row__main"><span class="row__title">پونک</span><span class="row__sub">۴۰۲ آگهی، واحد مرجع ۲٫۳ میلیارد</span></span><svg class="icon icon--fwd" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+<li><button type="button" class="row"><span class="row__swatch q5"></span><span class="row__main"><span class="row__title">شهرک غرب</span><span class="row__sub">۱۹ آگهی، واحد مرجع ۳٫۲ میلیارد</span></span><span class="badge badge--warn">کم‌داده</span><svg class="icon icon--fwd" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+<li><button type="button" class="row" aria-current="true"><span class="row__swatch q2"></span><span class="row__main"><span class="row__title">آسمان</span><span class="row__sub">۱۰۶ آگهی، واحد مرجع ۳٫۰ میلیارد</span></span><svg class="icon icon--fwd" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+<li><button type="button" class="row" disabled><span class="row__main"><span class="row__title">کوهسار</span><span class="row__sub">کمتر از ۵ آگهی؛ برآورد ممکن نیست</span></span></button></li>
+</ul>
+</div>
+
+<h2>نشان و بنر</h2>
+<div class="demo">
+<span class="badge badge--warn">کم‌داده</span> <span class="badge badge--pos">۱۲٪ زیر برآورد</span> <span class="badge badge--neg">۸٪ بالای برآورد</span> <span class="badge badge--off">بدون پارکینگ</span> <span class="badge">بازسازی‌شده</span>
+<p class="banner banner--warn" role="note">شهرک غرب فقط ۱۹ آگهی دارد؛ عدد کم‌اطمینان‌تر و بازه پهن‌تر است.</p>
+<p class="banner banner--info" role="note">مدل با آگهی‌های ۴۰ تا ۱۱۰ متری ساخته شده؛ برای این متراژ دقت کمتر است.</p>
+</div>
+
+<h2>کارت قیمت و بازه</h2>
+<section class="card price">
+<p class="price__label">رهن کامل برآوردی</p>
+<p class="price__value"><span>۲٬۰۷۸</span> <span class="price__unit">میلیون تومان</span></p>
+<p class="price__sub">حدود ۲۷٫۷ میلیون برای هر متر</p>
+<div class="band"><svg class="band__svg" viewBox="0 0 320 76" dir="ltr" role="img" aria-label="۹۵٪ آگهی‌های واحدی مثل شما بین ۱٬۵۶۶ و ۲٬۷۵۶ میلیون تومان است.">
+<circle class="dot" cx="80" cy="30" r="2.6"/><circle class="dot" cx="87" cy="30" r="2.6"/><circle class="dot" cx="87" cy="24" r="2.6"/><circle class="dot" cx="150" cy="30" r="2.6"/><circle class="dot" cx="157" cy="30" r="2.6"/><circle class="dot" cx="157" cy="24" r="2.6"/><circle class="dot" cx="157" cy="18" r="2.6"/><circle class="dot skeleton-dot" cx="230" cy="30" r="2.6"/>
+<rect class="track" x="40" y="38" width="240" height="8" rx="4"/><line class="est" x1="156" y1="33" x2="156" y2="51"/><circle class="est" cx="156" cy="42" r="6"/><path class="offer" d="M210,34 l6,8 l-6,8 l-6,-8z"/>
+<text class="band__lbl" x="40" y="68">۱٬۵۶۶</text><text class="band__lbl" x="280" y="68">۲٬۷۵۶</text></svg></div>
+<p class="band__caption">۹۵٪ آگهی‌های واحدی مثل شما بین ۱٬۵۶۶ و ۲٬۷۵۶ میلیون تومان است. هر نقطه یک آگهی مشابه در پونک است.</p>
+<div class="split"><label class="split__label" for="dr">ودیعه</label><input id="dr" type="range" dir="ltr" min="0" max="2000" step="50" value="1500"><label class="split__rate">نرخ تبدیل <select><option>۳٪</option></select></label><p>ودیعه ۱٬۵۰۰ + اجارهٔ ماهانه ۱۷٫۳ میلیون</p></div>
+<p class="muted">بر پایهٔ ۳۰۲ آگهی پونک و مدلی از ۸٬۹۲۶ آگهی غرب تهران</p>
+</section>
+
+<h2>لیست مقدار–برچسب</h2>
+<dl class="kv"><div><dt>آگهی تمیز این هفته</dt><dd>۸۳۱</dd></div><div><dt>میانهٔ آگهی‌ها</dt><dd>ودیعه ۱٬۷۵۰ + اجاره ۱۲</dd></div><div><dt>نسبت به برداشت قبل</dt><dd>+۱٫۷٪</dd></div></dl>
+
+<h2>کارت آگهی</h2>
+<article class="ad"><p class="ad__stats">۷۸ متر، ساخت ۱۳۹۲، طبقهٔ ۳</p>
+<div class="ad__tags"><span class="badge">پارکینگ</span><span class="badge badge--off">بدون آسانسور</span><span class="badge">بازسازی‌شده</span></div>
+<dl class="kv ad__price"><div><dt>ودیعه</dt><dd>۱٬۵۰۰</dd></div><div><dt>اجارهٔ ماهانه</dt><dd>۱۸</dd></div><div class="kv--strong"><dt>رهن کامل</dt><dd>۲٬۱۰۰</dd></div></dl>
+<div class="ad__foot"><span class="badge badge--neg">۱٪ بالای برآورد</span><span class="ad__age">۲ روز پیش</span><a class="btn btn--text" href="#" target="_blank" rel="noopener">دیوار<svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a></div></article>
+<div class="skeleton skeleton--ad"></div>
+<div class="empty"><p>آگهی مشابهی (±۱۵ متر، ±۶ سال) در پونک نیست.</p><button type="button" class="btn btn--secondary">دیدن همهٔ آگهی‌های پونک</button></div>
+
+<h2>برگهٔ محله</h2>
+<aside class="sheet sheet--demo" role="region" aria-label="پونک"><div class="sheet__handle"></div>
+<div class="sheet__head"><h2>پونک</h2><button type="button" class="iconbtn" aria-label="بستن"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+<div class="sheet__body"><p class="sheet__ref muted">واحد مرجع: ۷۵ متر، ۱۵ ساله، طبقهٔ ۳، پارکینگ و آسانسور</p>
+<p class="price price--sheet"><span class="price__value">۲٬۳۰۰ <span class="price__unit">میلیون تومان رهن کامل</span></span></p>
+<p class="price__sub">۹۵٪ آگهی‌های چنین واحدی: ۱٬۷۳۵ تا ۳٬۰۵۰</p>
+<dl class="kv"><div><dt>آگهی تمیز این هفته</dt><dd>۸۳۱</dd></div><div><dt>نسبت به برداشت قبل</dt><dd>+۱٫۷٪</dd></div></dl>
+<h3 class="sheet__sub">محله‌های نزدیک</h3><div class="chips"><a class="chip" href="#">گیشا</a><a class="chip" href="#">آسمان</a></div>
+<a class="btn btn--primary btn--block" href="#">برآورد واحد من در پونک</a></div></aside>
+
+<h2>آکاردئون</h2>
+<details class="acc"><summary>روش کار و محدودیت‌ها<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary><div class="acc__body">محتوا</div></details>
+<details class="acc" open><summary>نبض بازار<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary><div class="acc__body">محتوای باز</div></details>
+
+<h2>کاشی‌ها، راهنما و نقشه</h2>
+<div class="tiles"><a class="tile" href="#"><span class="tile__k">ارزان‌ترین</span><span class="tile__v">۱٫۷ <small>میلیارد</small></span><span class="tile__s">آسمان</span></a><div class="tile"><span class="tile__k">میانهٔ ۴۵ محله</span><span class="tile__v">۲٫۳ <small>میلیارد</small></span><span class="tile__s">واحد ۷۵ متری</span></div><a class="tile" href="#"><span class="tile__k">گران‌ترین</span><span class="tile__v">۳٫۲ <small>میلیارد</small></span><span class="tile__s">شهرک غرب</span></a></div>
+<div class="mapbox"><svg class="map" viewBox="0 0 360 160" role="group" aria-label="نمونهٔ نقشه">
+<g class="cells"><a class="cell q1" href="#"><path d="M0 0H120V160H0Z"/></a><a class="cell q3" href="#"><path d="M120 0H240V160H120Z"/></a><a class="cell q5 sel" href="#"><path d="M240 0H360V80H240Z"/></a><a class="cell q4 mine" href="#"><path d="M240 80H360V160H240Z"/></a></g>
+<g class="roads"><path class="road trunk" d="M0 120L360 40"/><path class="road motorway" d="M60 0L200 160"/></g>
+<g class="lbls"><text class="lbl q1" x="60" y="77"><tspan class="lbl-name">آسمان</tspan><tspan class="lbl-val" x="60" dy="11">۱٫۷</tspan></text><text class="lbl q3" x="180" y="84"><tspan class="lbl-val">۲٫۳</tspan></text><text class="lbl q5" x="300" y="44"><tspan class="lbl-val">۳٫۲</tspan></text><text class="lbl q4 mine" x="300" y="124"><tspan class="lbl-val">۲٫۷</tspan></text></g></svg></div>
+<div class="legend"><p class="legend__title">رهن کامل واحد مرجع، میلیارد تومان</p><div class="legend__bar" dir="ltr"><i class="q1"></i><i class="q2"></i><i class="q3"></i><i class="q4"></i><i class="q5"></i></div><div class="legend__ticks" dir="ltr"><span style="--i:0">۱٫۷</span><span style="--i:1">۲٫۰</span><span style="--i:2">۲٫۲</span><span style="--i:3">۲٫۵</span><span style="--i:4">۲٫۸</span><span style="--i:5">۳٫۲</span></div><p class="legend__note">مرز محله‌ها تقریبی است. راه‌ها: © مشارکت‌کنندگان OpenStreetMap</p></div>
+
+<h2>نمودار و جدول</h2>
+<svg class="chart" viewBox="0 0 360 80" role="img" aria-label="نمونه"><line class="axis" x1="180" y1="4" x2="180" y2="76"/><rect class="pos" x="180" y="10" width="90" height="20"/><text class="val" x="274" y="25">+۱۰٪</text><rect class="neg" x="120" y="44" width="60" height="20"/><text class="val" x="116" y="59" text-anchor="end">−۷٪</text><text class="muted" x="356" y="25" text-anchor="end">پارکینگ</text></svg>
+<table class="table"><thead><tr><th>برداشت</th><th>آگهی</th><th>میانه</th></tr></thead><tbody><tr><td>۱۴۰۵/۰۷/۲۱</td><td>۸٬۹۲۶</td><td>۳۱٫۰</td></tr></tbody></table>
+
+<h2>پیام، نوار اقدام</h2>
+<div class="toast toast--demo" role="status">برای شهید فکوری داده کافی نیست.</div>
+<div class="actionbar actionbar--demo"><button type="button" class="btn btn--primary btn--block">دیدن برآورد</button></div>
+</main>
+</body>
+</html>
