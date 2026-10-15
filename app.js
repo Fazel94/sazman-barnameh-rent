@@ -40,9 +40,12 @@ const FEATURES = {
   "flights": f => flights(f.floor, f.elevator),
   "renovated": f => +f.renovated,
   "complex": f => +f.complex,
+  "pub_age": () => 0,  // days since the ad was published: a flat being priced is at the snapshot's asking level
 };
 const feature = name => {
   if (name.startsWith("hood:")) return f => +(f.hood === name.slice(5));
+  const knot = /^age>(\d+)$/.exec(name);  // piecewise-linear age: years beyond each knot of model.AGE_KNOTS
+  if (knot) return f => Math.max(0, S.year - f.year_built - +knot[1]);
   if (!FEATURES[name]) throw new Error(`app.js: no evaluator for model feature ${name}`);
   return FEATURES[name];
 };
@@ -52,12 +55,14 @@ const FEAT = NAMES.slice(0, K).map(feature);
 const HOOD_COL = Object.fromEntries(S.model.hoods.map((slug, j) => [slug, j]));   // baseline / unpriced → undefined
 const BETA = Object.fromEntries(NAMES.slice(0, K).map((n, i) => [n, S.model.beta[i]]));
 const SIZE = `log(size/${S.model.ref_area})`;
-function predict(f) {  // mirror of model.predict: mu and the one-flat SE of log(M/m²)
-  const x = FEAT.map(g => g(f)), j = HOOD_COL[f.hood], {beta, cov_ff, cov_fh, var_h, sigma} = S.model;
+const AGE_TERMS = NAMES.slice(0, K).filter(n => n === "age" || n.startsWith("age>")).map(n => [S.model.beta[NAMES.indexOf(n)], feature(n)]);
+const ageLog = f => AGE_TERMS.reduce((s, [b, g]) => s + b * g(f), 0);  // the whole age effect, log scale
+function predict(f) {  // mirror of model.predict: mu and the one-flat SE of log(M/m²) with the hood's residual sd
+  const x = FEAT.map(g => g(f)), j = HOOD_COL[f.hood], {beta, cov_ff, cov_fh, var_h, sigma, sigma_hood} = S.model;
   let mu = 0, v = 0;
   for (let r = 0; r < K; r++) { mu += x[r] * beta[r]; for (let c = 0; c < K; c++) v += x[r] * cov_ff[r][c] * x[c]; }
   if (j !== undefined) { mu += beta[K + j]; v += var_h[j]; for (let r = 0; r < K; r++) v += 2 * x[r] * cov_fh[j][r]; }
-  return {mu, one: Math.hypot(Math.sqrt(Math.max(v, 0)), sigma)};
+  return {mu, one: Math.hypot(Math.sqrt(Math.max(v, 0)), sigma_hood[f.hood] ?? sigma)};
 }
 function estimate(f) {
   const {mu, one} = predict(f), a = f.area_m2;
@@ -424,7 +429,7 @@ function whySteps(f) {
   const zoneRef = zoneMedian() * RF.area_m2, hoodRef = Math.exp(predict({...REF, hood: f.hood}).mu) * RF.area_m2;
   const rows = [[`${hoodBySlug[f.hood].name} نسبت به میانهٔ محله‌ها`, hoodRef / zoneRef]];
   if (f.area_m2 !== RF.area_m2) rows.push([`${fa0.format(f.area_m2)} متر به‌جای ${fa0.format(RF.area_m2)}`, (f.area_m2 / RF.area_m2) ** (1 + b[SIZE])]);
-  if (age !== RF.age) rows.push([`${fa0.format(age)} سال عمر به‌جای ${fa0.format(RF.age)}`, Math.exp(b.age * (age - RF.age))]);
+  if (age !== RF.age) rows.push([`${fa0.format(age)} سال عمر به‌جای ${fa0.format(RF.age)}`, Math.exp(ageLog(f) - ageLog(REF))]);
   if (f.elevator !== RF.elevator) rows.push([f.elevator ? "با آسانسور" : "بدون آسانسور", Math.exp(b.elevator * (f.elevator - RF.elevator))]);
   if (fl !== flRef) rows.push([`${fa0.format(fl)} طبقه پله`, Math.exp(b.flights * (fl - flRef))]);
   if (f.parking !== RF.parking) rows.push([f.parking ? "با پارکینگ" : "بدون پارکینگ", Math.exp(b.parking * (f.parking - RF.parking))]);
