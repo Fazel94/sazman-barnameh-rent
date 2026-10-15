@@ -2,8 +2,8 @@
 :root{--bg:#fff;--surface:#f4f5f7;--surface-2:#e9ecf1;--fg:#1d1f23;--muted:#5f6670;--border:#d9dce1;--accent:#0b6bcb;--accent-fg:#fff;--accent-soft:#e6f0fb;--pos:#15803d;--neg:#b91c1c;--warn:#b45309;--warn-soft:#fef3c7;--me:#ca8a04;--q1:#dbeafe;--q2:#93c5fd;--q3:#60a5fa;--q4:#2563eb;--q5:#1e3a8a;--q-ink-lo:#1d1f23;--q-ink-hi:#fff;
 --font:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;--fs-xs:.75rem;--fs-sm:.875rem;--fs-md:1rem;--fs-lg:1.25rem;--fs-xl:1.5rem;--fs-2xl:2.5rem;
 --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;--sp-7:48px;--r-sm:6px;--r-md:12px;--r-lg:20px;--r-pill:999px;--tap:48px;
---shadow-1:0 1px 3px rgb(0 0 0/.12);--shadow-2:0 -4px 16px rgb(0 0 0/.14);--dur-1:120ms;--dur-2:200ms;--ease:cubic-bezier(.2,0,0,1)}
-@media(prefers-color-scheme:dark){:root{--bg:#15171a;--surface:#1f2226;--surface-2:#2a2e33;--fg:#e6e8eb;--muted:#9aa3ad;--border:#343940;--accent:#5aa9f5;--accent-fg:#0b1220;--accent-soft:#16304d;--pos:#4ade80;--neg:#f87171;--warn:#fbbf24;--warn-soft:#3a2a05;--me:#facc15;--q1:#1e3a5f;--q2:#1d4f91;--q3:#2b62b8;--q4:#5b9bf0;--q5:#a8cdfb;--q-ink-lo:#e6e8eb;--q-ink-hi:#0b1220}}
+--shadow-1:0 1px 3px rgb(0 0 0/.12);--shadow-2:0 -4px 16px rgb(0 0 0/.14);--dur-1:120ms;--dur-2:200ms;--ease:cubic-bezier(.2,0,0,1);--land:#f2efe9;--land-line:#fff;--road:#f0a35e}
+@media(prefers-color-scheme:dark){:root{--bg:#15171a;--surface:#1f2226;--surface-2:#2a2e33;--fg:#e6e8eb;--muted:#9aa3ad;--border:#343940;--accent:#5aa9f5;--accent-fg:#0b1220;--accent-soft:#16304d;--pos:#4ade80;--neg:#f87171;--warn:#fbbf24;--warn-soft:#3a2a05;--me:#facc15;--q1:#1e3a5f;--q2:#1d4f91;--q3:#2b62b8;--q4:#5b9bf0;--q5:#a8cdfb;--q-ink-lo:#e6e8eb;--q-ink-hi:#0b1220;--land:#202327;--land-line:#3a3f46;--road:#b5753c}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;font:400 var(--fs-md)/1.7 var(--font);color:var(--fg);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
@@ -132,7 +132,7 @@ select{border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp
 .legend{margin:var(--sp-3) auto;max-width:520px;font-size:var(--fs-xs)}
 .legend__title{margin:0 0 var(--sp-1);font-weight:600}
 .legend__bar{display:flex;height:12px;border-radius:var(--r-sm);overflow:hidden}
-.legend__bar i{flex:1}
+.legend__bar{background:var(--land)}.legend__bar i{flex:1;opacity:.55}
 .legend__bar .q1,.row__swatch.q1{background:var(--q1)}.legend__bar .q2,.row__swatch.q2{background:var(--q2)}.legend__bar .q3,.row__swatch.q3{background:var(--q3)}.legend__bar .q4,.row__swatch.q4{background:var(--q4)}.legend__bar .q5,.row__swatch.q5{background:var(--q5)}
 .legend__ticks{position:relative;height:20px}
 .legend__ticks span{position:absolute;top:2px;left:calc(var(--i)*20%);transform:translateX(-50%)}
@@ -153,16 +153,16 @@ select{border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp
 .mapbox{max-width:520px;margin:var(--sp-3) auto}
 .map{display:block;width:100%;height:auto;direction:ltr;-webkit-tap-highlight-color:transparent}
 .cell{cursor:pointer;outline:0}
-.cell path{stroke:var(--bg);stroke-width:1;fill:var(--surface-2)}
+.map .land{fill:var(--land)}
+.cell path{stroke:var(--land-line);stroke-width:1.2;stroke-linejoin:round;fill:var(--surface-2);fill-opacity:.55}
 .cell.q1 path{fill:var(--q1)}.cell.q2 path{fill:var(--q2)}.cell.q3 path{fill:var(--q3)}.cell.q4 path{fill:var(--q4)}.cell.q5 path{fill:var(--q5)}
 .cell.sel path{stroke:var(--fg);stroke-width:2.5}
 .cell.mine path{stroke:var(--me);stroke-width:3}
 .cell:focus-visible path{stroke:var(--accent);stroke-width:3}
-.road{fill:none;stroke:var(--bg);stroke-opacity:.75;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-.road.trunk{stroke-width:1.2}.road.motorway{stroke-width:2}
-.lbl{font-size:11px;font-weight:700;text-anchor:middle;fill:var(--q-ink-lo);pointer-events:none}
-.lbl.q4,.lbl.q5{fill:var(--q-ink-hi)}
-.lbl-name{font-size:9px;font-weight:400}
+.road{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.road.primary{stroke:var(--land-line);stroke-width:.9}.road.trunk{stroke:var(--road);stroke-width:1.7}.road.motorway{stroke:var(--road);stroke-width:2.4}
+.lbl{font-size:11px;font-weight:700;text-anchor:middle;fill:var(--fg);stroke:var(--land);stroke-width:2.5px;stroke-linejoin:round;paint-order:stroke;pointer-events:none}
+.lbl-name{font-size:9px;font-weight:500}
 .map .low{display:none}
 .map .low.mine{display:inline}
 .map.hint .cell path{animation:glow 1.6s ease-in-out}
