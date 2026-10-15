@@ -1,7 +1,7 @@
 "use strict";
-// Written by build_site.py. VERSION changes with every build of index.html, so each weekly snapshot gets a fresh cache.
-const VERSION = "1686fbc4";
-const PRECACHE = ["/", "/app.js?v=386253d6", "/style.css?v=f2f95e0a", "/fonts/vazirmatn-subset.woff2", "/manifest.webmanifest", "/icons/icon-192.png"];
+// Written by build_site.py. VERSION changes with every build of the pages, so each weekly snapshot gets a fresh cache.
+const VERSION = "20b82301";
+const PRECACHE = ["/", "/app.js?v=74d264c3", "/style.css?v=8e6fcfd6", "/fonts/vazirmatn-subset.woff2", "/manifest.webmanifest", "/icons/icon-192.png"];
 const CACHE = `rent-${VERSION}`;
 self.addEventListener("install", ev => {
   ev.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -22,6 +22,8 @@ self.addEventListener("fetch", ev => {
     ev.respondWith(caches.match(req).then(hit => hit || fromNetwork(req)));
     return;
   }
-  // pages and data/: network first (weekly data), cache when offline
-  ev.respondWith(fromNetwork(req).catch(() => caches.match(req).then(hit => hit || Response.error())));
+  // a page is the same file for every query string: /estimate/result/?… is fetched and cached as /estimate/result/,
+  // so every flat shares one HTTP-cache entry (max-age 600) and one offline copy
+  const key = req.mode === "navigate" && url.search && url.pathname.endsWith("/") ? url.pathname : req;
+  ev.respondWith(fromNetwork(key).catch(() => caches.match(key).then(hit => hit || Response.error())));
 });

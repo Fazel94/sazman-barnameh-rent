@@ -1,21 +1,17 @@
 "use strict";
-// One page, four views routed by location.hash (see DESIGN.md «Patterns»): Explore (#, #hood=<slug>, #method),
-// Step 1 (#estimate/hood), Step 2 (#estimate/flat?…), Result (#estimate/result?…). Data: the two inline JSON blocks
-// written by build_site.py; per-hood ads load from data/ads/<slug>.json on demand. Mirrors estimate.py's model.
+// One script for every page: <body data-page> picks the init (explore, hood-step, flat-step, result, budget);
+// data is the inline #snapshot; per-hood ads load from /data/ads/<slug>.json on demand. Mirrors estimate.py's model.
 
 const S = JSON.parse(document.getElementById("snapshot").textContent);
-const H = JSON.parse(document.getElementById("history-data").textContent);
 
 const fa0 = new Intl.NumberFormat("fa-IR", {maximumFractionDigits: 0});
 const fa1 = new Intl.NumberFormat("fa-IR", {minimumFractionDigits: 1, maximumFractionDigits: 1});
-const fa2 = new Intl.NumberFormat("fa-IR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const faM1 = new Intl.NumberFormat("fa-IR", {maximumFractionDigits: 1});
 const faPct = new Intl.NumberFormat("fa-IR", {minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero"});
 const toFa = s => String(s).replace(/[0-9]/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
 const pct = v => faPct.format(v) + "٪";
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const $ = id => document.getElementById(id);
-const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
 const fmtM = v => fa0.format(Math.round(v));                 // millions
 const fmtB = v => fa1.format(Math.round(v / 100) / 10);      // millions → billions, 1 decimal
 const toAscii = s => String(s).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660);
@@ -74,40 +70,26 @@ function cdf(z) {  // Φ(z), Abramowitz & Stegun 7.1.26
   return z >= 0 ? (1 + y) / 2 : (1 - y) / 2;
 }
 
-// ---- svg helpers (charts are direction:ltr, anchors are visual) ----------------
-const scale = (d0, d1, r0, r1) => v => r0 + (v - d0) / (d1 - d0) * (r1 - r0);
-function ticks(lo, hi, count) {
-  if (!(hi > lo)) return [lo];
-  const raw = (hi - lo) / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
-  const step = (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p, out = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) out.push(+v.toFixed(6));
-  return out;
-}
-const svg = (w, h, body, label) => `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${body}</svg>`;
-// rtl: Persian label laid out right-to-left; its "start" is then the right edge at x
-const txt = (x, y, s, anchor = "middle", cls = "", rtl = false) => `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" text-anchor="${anchor}" class="${cls}"${rtl ? ' direction="rtl"' : ""}>${s}</text>`;
-const line = (cls, x1, y1, x2, y2) => `<line class="${cls}" x1="${(+x1).toFixed(1)}" y1="${(+y1).toFixed(1)}" x2="${(+x2).toFixed(1)}" y2="${(+y2).toFixed(1)}"/>`;
 
 // ---- hoods ----------------------------------------------------------------------
 const hoodBySlug = Object.fromEntries(S.hoods.map(h => [h.slug, h]));
 const priced = h => h.ref_ppm !== null;
 const low = h => priced(h) && h.low_data;
 const zoneMedian = () => S.zone.median_ref_ppm ?? median(S.hoods.filter(priced).map(h => h.ref_ppm));
-const hoodRows = slug => H.filter(r => r.hoods[slug] !== undefined);
 const RF = S.reference.flat;
 const REF = {...RF, year_built: S.year - RF.age};
 const refText = `${fa0.format(RF.area_m2)} متر، ${fa0.format(RF.age)} ساله، ${floorText(RF.floor)}، `
   + (RF.parking && RF.elevator ? "با پارکینگ و آسانسور" : `${RF.parking ? "با" : "بدون"} پارکینگ، ${RF.elevator ? "با" : "بدون"} آسانسور`);
 const badgeLow = '<span class="badge badge--warn">کم‌داده</span>';
 const exploreCell = slug => document.querySelector(`#x-map a.cell[data-slug="${slug}"]`);
-const qClassOf = slug => { const c = exploreCell(slug); return c ? [...c.classList].find(k => /^q\d$/.test(k)) : null; };
+const qClassOf = slug => { const q = hoodBySlug[slug]?.q; return q ? `q${q}` : null; };
 
 const adsCache = {}, adsPending = {};
 function loadAds(slug) {  // caches resolved files only, so a failed fetch can be retried
   if (adsCache[slug]) return Promise.resolve(adsCache[slug]);
   if (!hoodBySlug[slug].n) return Promise.resolve(adsCache[slug] = []);
   if (adsPending[slug]) return adsPending[slug];
-  return adsPending[slug] = fetch(`data/ads/${slug}.json`).then(r => {
+  return adsPending[slug] = fetch(`/data/ads/${slug}.json`).then(r => {
     if (!r.ok) throw new Error(r.status);
     return r.json();
   }).then(ads => (adsCache[slug] = ads)).finally(() => { delete adsPending[slug]; });
@@ -123,18 +105,8 @@ function toast(msg) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 3000);
 }
 
-// ---- router ---------------------------------------------------------------------
+// ---- shared -----------------------------------------------------------------------
 const KEYS = ["hood", "area", "built", "floor", "parking", "elevator", "renovated", "complex"];
-function parseRoute(hash) {
-  const h = decodeURIComponent(hash.replace(/^#/, ""));
-  let m;
-  if ((m = h.match(/^hood=([\w-]+)$/))) return {view: "explore", sheet: hoodBySlug[m[1]] ? m[1] : null};
-  if (h === "method") return {view: "explore", method: true};
-  if (h === "calc") return {view: "hood", params: new URLSearchParams(), canonical: "#estimate/hood"};
-  if ((m = h.match(/^estimate\/(hood|flat|result)(?:\?(.*))?$/))) return {view: m[1], params: new URLSearchParams(m[2] || "")};
-  if ((m = h.match(/^budget(?:\?(.*))?$/))) return {view: "budget", params: new URLSearchParams(m[1] || "")};
-  return {view: "explore"};
-}
 function flatOf(p) {
   const int = k => /^\d+$/.test(p.get(k) || "") ? +p.get(k) : NaN;
   const floor = int("floor");
@@ -149,93 +121,34 @@ function query(hood, f) {
 }
 const validArea = a => Number.isInteger(a) && a >= 20 && a <= 300;
 const validBuilt = y => Number.isInteger(y) && y >= 1300 && y <= S.year;
-
-function go(hash, {replace = false} = {}) {
-  if (replace) history.replaceState(history.state, "", hash);
-  else history.pushState({app: true}, "", hash);
-  render();
+// the hood this page needs; otherwise step 1 (which toasts for a known but unpriced hood)
+function priceableHood(params) {
+  const h = hoodBySlug[params.get("hood")];
+  if (h && priced(h)) return h;
+  location.replace(`/estimate/${h ? `?hood=${h.slug}` : ""}`);
+  return null;
 }
-const goBack = parent => history.state?.app ? history.back() : go(parent, {replace: true});
 
 // Matomo: base.html defines window._paq on rent.nlogn.ir only; elsewhere these are no-ops.
 const track = (...cmd) => { if (window._paq) window._paq.push(cmd); };
-let trackedUrl = null;
-function trackView(r) {  // one virtual page per route; the flat's details never leave the page
-  const path = r.view === "explore" ? (r.sheet ? `/hood-sheet/${r.sheet}` : r.method ? "/method" : "/")
-    : r.view === "result" ? `/estimate/result/${r.params.get("hood")}`
-    : r.view === "budget" ? "/budget" : `/estimate/${r.view}`;
-  const url = location.origin + path;
-  if (trackedUrl) track("setReferrerUrl", trackedUrl);
-  track("setCustomUrl", url);
-  track("setDocumentTitle", path);
-  track("trackPageView");
-  trackedUrl = url;
-}
-let lastHash = null, curRoute = {view: "explore"}, exploreY = 0, firstRender = true;
-function render() {
-  const hash = location.hash || "#";
-  if (hash === lastHash) return;
-  lastHash = hash;
-  const r = parseRoute(hash);
-  if (r.canonical) { history.replaceState(history.state, "", r.canonical); lastHash = r.canonical; }
-  const prev = curRoute;
-  if ((r.view === "flat" || r.view === "result") && !checkHood(r)) return;
-  if (r.view === "result" && !checkFlat(r)) return;
-  if (prev.view === "explore" && r.view !== "explore") exploreY = scrollY;
-  curRoute = r;
-  for (const [v, id] of [["explore", "v-explore"], ["hood", "v-hood"], ["flat", "v-flat"], ["result", "v-result"], ["budget", "v-budget"]])
-    $(id).hidden = v !== r.view;
-  if (r.view !== "explore") document.body.style.paddingBottom = "";
-  if (r.view === "explore") renderExplore(r);
-  else if (r.view === "hood") renderHoodStep(r.params);
-  else if (r.view === "flat") renderFlatStep(r.params);
-  else if (r.view === "budget") renderBudget(r.params);
-  else renderResult(r.params);
-  if (r.view === "explore") {
-    if (prev.view !== "explore") scrollTo(0, exploreY);
-    if (r.method) {
-      const acc = $("acc-method");
-      acc.open = true;
-      acc.scrollIntoView({block: "start"});
-    }
-  } else if (!firstRender) {
-    scrollTo(0, 0);
-    $(`v-${r.view}`).querySelector("h1").focus({preventScroll: true});
-  }
-  firstRender = false;
-  trackView(r);
-}
-// hood / flat / result need a priced hood; otherwise replace with step 1 (+ toast for a known but unpriced hood)
-function checkHood(r) {
-  const h = hoodBySlug[r.params.get("hood")];
-  if (h && priced(h)) return true;
-  if (h) toast(`برای ${h.name} داده کافی نیست.`);
-  go("#estimate/hood", {replace: true});
-  return false;
-}
-function checkFlat(r) {
-  const f = flatOf(r.params);
-  if (validArea(f.area_m2) && validBuilt(f.year_built)) return true;
-  pendingErrors = true;
-  go(`#estimate/flat?${query(r.params.get("hood"), f)}`, {replace: true});
-  return false;
-}
 
 // ---- explore ----------------------------------------------------------------------
+// The bottom sheet is the one in-place view: /#hood=<slug>. Opening it pushes one history entry, so back closes it.
+const sheetSlug = () => { const m = location.hash.match(/^#hood=([\w-]+)$/); return m && hoodBySlug[m[1]] ? m[1] : null; };
+function openSheet(slug) {
+  if (sheetSlug()) history.replaceState(history.state, "", "#hood=" + slug);
+  else history.pushState({sheet: true}, "", "#hood=" + slug);
+  renderSheet(true);
+  track("trackEvent", "sheet", "open", slug);
+}
+function closeSheet() {
+  if (history.state?.sheet) history.back();
+  else { history.replaceState(null, "", location.pathname + location.search); renderSheet(false); }
+}
+
 function initExplore() {
-  $("x-date").textContent = `برداشت ${toFa(S.jalali)}`;
-  $("x-sub").textContent = `رهن کامل یک واحد ${fa0.format(RF.area_m2)} متری ${fa0.format(RF.age)} ساله `
-    + `(${floorText(RF.floor)}، با پارکینگ و آسانسور) در هر محله؛ از ${fa0.format(S.counts.peers)} آگهی دیوار.`;
-  renderMethodCounts();
-  renderData();
-  if (S.age === null) $("acc-market").hidden = true;
-  const lazy = {"acc-deals": renderDeals, "acc-effects": renderEffects, "acc-market": renderMarket, "acc-history": renderHistory};
-  for (const [id, fn] of Object.entries(lazy)) {
-    const d = $(id);
-    d.addEventListener("toggle", () => { if (d.open && !d.dataset.done) { d.dataset.done = "1"; fn(); } });
-  }
-  $("deals-list").addEventListener("click", ev => { if (ev.target.closest("[data-act=deals-retry]")) renderDeals(); });
-  $("x-pick").addEventListener("click", () => {
+  $("x-pick").addEventListener("click", ev => {
+    ev.preventDefault();
     const map = document.querySelector("#x-map svg.map");
     $("x-map").scrollIntoView({block: "start", behavior: "smooth"});
     map.classList.add("hint");
@@ -243,26 +156,34 @@ function initExplore() {
     toast("روی محلهٔ خود روی نقشه بزنید.");
   });
   document.querySelector("#x-map svg.map").addEventListener("click", ev => {
-    if (!ev.target.closest(".cell") && curRoute.sheet) goBack("#");
+    if (!ev.target.closest(".cell") && sheetSlug()) closeSheet();
   });
-  $("x-sheet-close").addEventListener("click", () => goBack("#"));
-  document.addEventListener("keydown", ev => {
-    if (ev.key === "Escape" && curRoute.view === "explore" && curRoute.sheet) goBack("#");
+  $("x-sheet-close").addEventListener("click", closeSheet);
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape" && sheetSlug()) closeSheet(); });
+  document.addEventListener("click", ev => {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    const a = ev.target.closest("#x-map a[data-slug], #x-sheet a[data-slug]");
+    if (a) { ev.preventDefault(); openSheet(a.dataset.slug); }
   });
+  addEventListener("popstate", () => renderSheet(false));
+  addEventListener("hashchange", () => renderSheet(false));
+  initInstall();
+  renderSheet(false);
 }
 
-function renderExplore(r) {
+function renderSheet(focus) {
+  const slug = sheetSlug();
   const sheet = $("x-sheet");
   for (const c of document.querySelectorAll("#x-map .cell.sel")) c.classList.remove("sel");
-  if (!r.sheet) {
+  if (!slug) {
     sheet.hidden = true;
     document.body.style.paddingBottom = "";
     return;
   }
-  const h = hoodBySlug[r.sheet], cell = exploreCell(h.slug);
+  const h = hoodBySlug[slug], cell = exploreCell(h.slug);
   if (cell) { cell.classList.add("sel"); cell.parentNode.appendChild(cell); }
   $("x-sheet-title").innerHTML = esc(h.name) + (low(h) ? " " + badgeLow : "");
-  const chips = h.neighbors.filter(s => hoodBySlug[s]).map(s => `<a class="chip" href="#hood=${s}">${esc(hoodBySlug[s].name)}</a>`).join("");
+  const chips = h.neighbors.filter(s => hoodBySlug[s]).map(s => `<a class="chip" href="/hood/${s}/" data-slug="${s}">${esc(hoodBySlug[s].name)}</a>`).join("");
   const near = chips ? `<h3 class="sheet__sub">محله‌های نزدیک</h3><div class="chips">${chips}</div>` : "";
   let body;
   if (!priced(h)) {
@@ -271,13 +192,12 @@ function renderExplore(r) {
     const rows = [["آگهی تمیز این هفته", fa0.format(h.n)],
       ["میانهٔ آگهی‌ها", `ودیعه ${fmtM(h.median_deposit)} + اجاره ${fa1.format(h.median_rent)} (رهن کامل ${fmtM(h.median_equiv)})`],
       ["میانهٔ متراژ و عمر بنا", `${fa0.format(h.median_area)} متر، ${fa0.format(h.median_age)} سال`]];
-    const hr = hoodRows(h.slug);
-    if (hr.length >= 2) rows.push(["نسبت به برداشت قبل", pct((hr[hr.length - 1].hoods[h.slug] / hr[hr.length - 2].hoods[h.slug] - 1) * 100)]);
+    if (h.change !== null) rows.push(["نسبت به برداشت قبل", pct(h.change * 100)]);
     body = `<p class="sheet__ref muted">واحد مرجع: ${refText}</p>`
       + `<p class="price price--sheet"><span class="price__value">${fmtM(h.ref_equiv)} <span class="price__unit">میلیون تومان رهن کامل</span></span></p>`
       + `<p class="price__sub">۹۵٪ آگهی‌های چنین واحدی: ${fmtM(h.band_one[0])} تا ${fmtM(h.band_one[1])}</p>`
       + `<dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` + near
-      + `<a class="btn btn--primary btn--block" href="#estimate/flat?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`
+      + `<a class="btn btn--primary btn--block" href="/estimate/flat/?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`
       + `<a class="btn btn--text btn--block" href="/hood/${h.slug}/">صفحهٔ ${esc(h.name)}</a>`;
   }
   $("x-sheet-body").innerHTML = body;
@@ -285,78 +205,7 @@ function renderExplore(r) {
   sheet.hidden = false;
   $("x-sheet-body").scrollTop = 0;
   document.body.style.paddingBottom = `${sheet.offsetHeight}px`;
-  if (wasHidden && !firstRender) $("x-sheet-title").focus({preventScroll: true});
-}
-
-function divergingBars(rows, label) {
-  const W = 360, rowH = 28, T = 6, Ht = T + rows.length * rowH + 6;
-  const labelW = Math.min(170, Math.max(...rows.map(r => r.label.length)) * 6.2 + 8);
-  const L = 8, R = W - 8 - labelW, half = (R - L) / 2, x0 = L + half;
-  const k = 0.62 * half / Math.max(1e-9, ...rows.map(r => Math.abs(r.pct)));
-  const bars = rows.map((r, i) => {
-    const yc = T + i * rowH + rowH / 2, w = Math.abs(r.pct) * k, pos = r.pct >= 0;
-    return `<rect class="${pos ? "pos" : "neg"}" x="${(pos ? x0 : x0 - w).toFixed(1)}" y="${yc - 8}" width="${w.toFixed(1)}" height="16" rx="2"/>`
-      + txt(W - 8, yc + 4, esc(r.label), "start", "", true)
-      + txt(pos ? x0 + w + 4 : x0 - w - 4, yc + 4, pct(r.pct), pos ? "start" : "end", "val");
-  }).join("");
-  return svg(W, Ht, line("axis", x0, T, x0, Ht - 6) + bars, label);
-}
-
-function renderEffects() {
-  // age is shown per 10 years so its bar is comparable with the one-off features
-  const ageB = S.model.beta[NAMES.indexOf("age")];
-  const rows = S.effects.map(e => e.name === "age"
-    ? {label: "۱۰ سال عمر بیشتر", pct: (Math.exp(10 * ageB) - 1) * 100} : {label: e.label, pct: e.pct});
-  $("effects-chart").innerHTML = divergingBars(rows, "اثر هر ویژگی بر قیمت");
-  $("sigma-note").textContent = `پراکندگی آگهی‌ها حول مدل: حدود ±${fa0.format((Math.exp(S.model.sigma) - 1) * 100)}٪ برای یک واحد`;
-}
-
-function renderMarket() {
-  let weeks = S.age.by_week.filter(w => w.n >= 10);
-  if (!weeks.length) weeks = S.age.by_week;
-  const rows = weeks.map(w => {
-    const [, mm, dd] = w.week.split("-").map(Number);
-    return {label: `هفتهٔ ${fa0.format(dd)} ${MONTHS[mm - 1]}، ${fa0.format(w.n)} آگهی`, pct: w.median_pct};
-  });
-  $("week-chart").innerHTML = divergingBars(rows, "میانهٔ آگهی‌ها نسبت به مدل، بر اساس هفتهٔ انتشار");
-  const d = S.age.drift_pct_per_30d;
-  $("drift-note").textContent = `آگهی‌های تازه‌تر به‌ازای هر ۳۰ روز حدود ${fa1.format(Math.abs(d))}٪ `
-    + `${d >= 0 ? "گران‌تر" : "ارزان‌تر"} هستند. آگهی‌های تازه سقف بازار را نشان می‌دهند؛ آگهی‌های ۱۵+ روزه هنوز اجاره نرفته‌اند.`;
-}
-
-function renderHistory() {
-  const zm = v => v === null || v === undefined ? "—" : fa2.format(v);
-  $("history-table").tBodies[0].innerHTML = H.map(h => `<tr><td>${toFa(h.jalali)}</td><td>${fa0.format(h.peers)}</td>`
-    + `<td>${zm(h.zone_median_ref_ppm)}</td></tr>`).join("");
-  const rows = H.filter(h => h.zone_median_ref_ppm !== null && h.zone_median_ref_ppm !== undefined);
-  if (H.length < 3 || rows.length < 2) { $("history-chart").innerHTML = ""; return; }
-  const W = 360, Ht = 180, L = 44, R = 12, T = 16, B = 28;
-  const vals = rows.map(h => h.zone_median_ref_ppm);
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  if (hi === lo) { lo -= 1; hi += 1; }
-  const t = rows.map(h => Date.parse(h.date)), x = scale(t[0], t[t.length - 1], L, W - R), y = scale(lo, hi, Ht - B, T);
-  const pts = rows.map((h, i) => [x(t[i]).toFixed(1), y(h.zone_median_ref_ppm).toFixed(1)]);
-  $("history-chart").innerHTML = svg(W, Ht,
-    line("axis", L, Ht - B, W - R, Ht - B)
-    + `<polyline class="line" points="${pts.map(p => p.join(",")).join(" ")}"/>`
-    + pts.map(([cx, cy]) => `<circle class="line" cx="${cx}" cy="${cy}" r="3"/>`).join("")
-    + txt(L, Ht - B + 18, toFa(rows[0].jalali), "start") + txt(W - R, Ht - B + 18, toFa(rows[rows.length - 1].jalali), "end")
-    + txt(L - 6, y(hi) + 4, fa1.format(hi), "end") + txt(L - 6, y(lo) + 4, fa1.format(lo), "end"),
-    "روند میانهٔ محله‌ها، میلیون تومان بر متر واحد مرجع");
-}
-
-function renderMethodCounts() {
-  const c = S.counts, d = c.dropped;
-  $("method-counts").textContent = `در این برداشت ${fa0.format(c.peers)} آگهی از ${fa0.format(c.ads)} آگهی ماند `
-    + `(${fa0.format(S.zone.hoods_with_data)} محله با دست‌کم ۵ آگهی). حذف‌شده‌ها: ناقص ${fa0.format(d.missing)}، `
-    + `غیر واحد کامل ${fa0.format(d.not_whole_flat)}، بدون قیمت ${fa0.format(d.zero)}، تکراری ${fa0.format(d.dup)}، `
-    + `پرت ${fa0.format(d.outlier)}.`;
-}
-
-function renderData() {
-  const links = [["data/latest.json", "آخرین برداشت (latest.json)"], ["data/history.json", "روند (history.json)"]]
-    .concat(H.map(h => [`data/${h.date}.json`, `برداشت ${toFa(h.jalali)} (${h.date}.json)`]));
-  $("data-links").innerHTML = links.map(([href, label]) => `<li><a href="${esc(href)}">${esc(label)}</a></li>`).join("");
+  if (wasHidden && focus) $("x-sheet-title").focus({preventScroll: true});
 }
 
 // ---- step 1: hood -------------------------------------------------------------------
@@ -377,28 +226,22 @@ function searchHoods(q) {
 }
 
 function renderHoodList() {
-  const cur = hoodParams.get("hood"), res = searchHoods($("h-q").value);
+  const cur = hoodParams.get("hood"), res = searchHoods($("h-q").value), flat = flatOf(hoodParams);
   $("h-empty").hidden = res.length > 0;
   $("h-list").innerHTML = res.map(({h, street}) => {
     const q = qClassOf(h.slug), ok = priced(h);
     const sub = !ok ? `کمتر از ${fa0.format(S.thresholds.priced)} آگهی؛ برآورد ممکن نیست`
       : street ? `${street.startsWith("خیابان") ? "" : "خیابان "}${esc(street)}، ${fa0.format(h.n)} آگهی`
       : `${fa0.format(h.n)} آگهی، واحد مرجع ${fmtB(h.ref_equiv)} میلیارد`;
-    return `<li><button type="button" class="row" data-slug="${h.slug}"${ok ? "" : " disabled"}${h.slug === cur ? ' aria-current="true"' : ""}>`
+    return "<li>" + (ok ? `<a class="row" href="${esc(`/estimate/flat/?${query(h.slug, flat)}`)}"${h.slug === cur ? ' aria-current="true"' : ""}>` : '<span class="row" aria-disabled="true">')
       + (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${sub}</span></span>`
-      + (low(h) ? badgeLow : "") + icon("i-chevron", "icon--fwd") + "</button></li>";
+      + (low(h) ? badgeLow : "") + icon("i-chevron", "icon--fwd") + (ok ? "</a></li>" : "</span></li>");
   }).join("");
 }
 
-function renderHoodStep(params) {
-  hoodParams = params;
-  renderHoodList();
-}
-
 function pickHood(slug) {
-  prefetch(slug);
-  go(`#estimate/flat?${query(slug, flatOf(hoodParams))}`);
+  location.href = `/estimate/flat/?${query(slug, flatOf(hoodParams))}`;
 }
 
 const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
@@ -407,12 +250,13 @@ const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
   return 12742000 * Math.asin(Math.sqrt(h));
 };
 
+
 function initHoodStep() {
+  hoodParams = new URLSearchParams(location.search);
+  const pre = hoodBySlug[hoodParams.get("hood")];
+  if (pre && !priced(pre)) toast(`برای ${pre.name} داده کافی نیست.`);
+  renderHoodList();
   $("h-q").addEventListener("input", renderHoodList);
-  $("h-list").addEventListener("click", ev => {
-    const b = ev.target.closest("button.row");
-    if (b && !b.disabled) pickHood(b.dataset.slug);
-  });
   if (!("geolocation" in navigator)) { $("h-locate").hidden = true; return; }
   $("h-locate").addEventListener("click", () => {
     navigator.geolocation.getCurrentPosition(pos => {
@@ -420,7 +264,7 @@ function initHoodStep() {
       let best = null, bd = Infinity;
       for (const h of S.hoods) { const d = distM(la, lo, h.lat, h.lon); if (d < bd) { bd = d; best = h; } }
       if (!best || bd > 3000) { toast("موقعیت شما بیرون از غرب تهران است."); return; }
-      if (priced(best)) { pickHood(best.slug); toast(`محلهٔ شما: ${best.name}`); return; }
+      if (priced(best)) { pickHood(best.slug); return; }
       toast(`برای ${best.name} داده کافی نیست.`);
       $("h-q").value = best.name;
       renderHoodList();
@@ -472,10 +316,10 @@ function syncFlatUrl() {  // keep the typed flat in the URL so back / «تغیی
   if (!validArea(f.area_m2)) f.area_m2 = NaN;
   if (!validBuilt(f.year_built)) f.year_built = NaN;
   const q = query(flatHood, f);
-  history.replaceState(history.state, "", `#estimate/flat?${q}`);
-  lastHash = location.hash;
+  history.replaceState(null, "", `/estimate/flat/?${q}`);
   const a = $("f-context").querySelector("a");
-  if (a) a.href = `#estimate/hood?${q}`;
+  if (a) a.href = `/estimate/?${q}`;
+  document.querySelector("[data-back]").href = `/estimate/?${q}`;
 }
 
 function renderFlatStep(params) {
@@ -483,7 +327,7 @@ function renderFlatStep(params) {
   flatHood = h.slug;
   prefetch(h.slug);
   $("f-context").innerHTML = `${esc(h.name)}${low(h) ? " " + badgeLow : ""}، ${fa0.format(h.n)} آگهی، واحد مرجع ${fmtM(h.ref_equiv)} میلیون `
-    + `<a href="#estimate/hood?${query(h.slug, f)}">تغییر محله</a>`;
+    + `<a href="/estimate/?${query(h.slug, f)}">تغییر محله</a>`;
   $("f-area").value = Number.isNaN(f.area_m2) ? "" : toFa(f.area_m2);
   $("f-built").value = Number.isNaN(f.year_built) ? "" : toFa(f.year_built);
   setFloor(f.floor);
@@ -496,6 +340,9 @@ function renderFlatStep(params) {
 }
 
 function initFlatStep() {
+  const params = new URLSearchParams(location.search);
+  if (!priceableHood(params)) return;
+  pendingErrors = params.get("err") === "1";
   const form = $("f-form");
   for (const id of ["f-area", "f-built"]) {
     const el = $(id), check = id === "f-area" ? checkArea : checkBuilt, read = id === "f-area" ? readArea : readBuilt;
@@ -515,8 +362,10 @@ function initFlatStep() {
     ev.preventDefault();
     const okA = checkArea(true), okB = checkBuilt(true);
     if (!okA || !okB) { $(okA ? "f-built" : "f-area").focus(); return; }
-    go(`#estimate/result?${query(flatHood, readFlat())}`);
+    location.href = `/estimate/result/?${query(flatHood, readFlat())}`;
   });
+  renderFlatStep(params);
+  syncFlatUrl();
 }
 
 // ---- result --------------------------------------------------------------------------
@@ -535,7 +384,8 @@ function renderResult(params) {
     .filter(([k]) => f[k]).map(([, v]) => v);
   $("r-summary").textContent = [h.name, `${fa0.format(f.area_m2)} متر`, `ساخت ${toFa(f.year_built)}`, floorText(f.floor)]
     .concat(extras.length ? [extras.join("، ")] : []).join("، ");
-  $("r-edit").href = `#estimate/flat?${key}`;
+  $("r-edit").href = `/estimate/flat/?${key}`;
+  document.querySelector("[data-back]").href = `/estimate/flat/?${key}`;
   $("r-banners").innerHTML = (low(h) ? `<p class="banner banner--warn" role="note">${esc(h.name)} فقط ${fa0.format(h.n)} آگهی دارد؛ عدد کم‌اطمینان‌تر و بازه پهن‌تر است.</p>` : "")
     + (f.area_m2 < SZ0 || f.area_m2 > SZ1 ? `<p class="banner banner--info" role="note">${SIZE_HINT}</p>` : "");
   $("r-equiv").textContent = fmtM(est.equiv);
@@ -557,6 +407,7 @@ function renderResult(params) {
       .catch(() => { if (R.key === k) { R.err = true; renderAds(); } });
   }
 }
+
 
 function renderSplit() {
   const equiv = R.est.equiv, rate = +$("r-rate").value, d = +$("r-dep").value, rent = (equiv - d) * rate;
@@ -602,21 +453,6 @@ function dealBadge(v) {
   if (v < NEAR_HI) return '<span class="badge">نزدیک برآورد</span>';
   if (v < CUT_HI) return `<span class="badge badge--neg">بالای برآورد، ${p}٪</span>`;
   return `<span class="badge badge--neg badge--strong">خیلی بالای برآورد، ${p}٪</span>`;
-}
-
-let deals = null;
-function renderDeals() {
-  const list = $("deals-list");
-  $("deals-note").textContent = `آگهی‌های ۱۴ روز اخیر در محله‌های پرآگهی که دست‌کم ${fa0.format(-CUT_LO)}٪ زیر برآورد مدل برای همان مشخصات‌اند، بیشترین فاصله اول. `
-    + "ارزانی ممکن است دلیلی داشته باشد که در آگهی نیامده (زیرزمین، وضعیت بنا، شرایط خاص)؛ آگهی را کامل بخوانید.";
-  if (deals) {
-    list.innerHTML = deals.length ? deals.map(a => adCard(a, true)).join("") : '<div class="empty"><p>این هفته آگهی تازه‌ای با این فاصله نیست.</p></div>';
-    return;
-  }
-  list.innerHTML = '<div class="skeleton skeleton--ad"></div>'.repeat(3);
-  fetch("data/deals.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(d => { deals = d; renderDeals(); })
-    .catch(() => { list.innerHTML = '<div class="empty"><p>آگهی‌ها بارگذاری نشد.</p><button type="button" class="btn btn--secondary" data-act="deals-retry">تلاش دوباره</button></div>'; });
 }
 
 function bandSvg({lo, hi, est, dots, offer, loading}) {
@@ -669,8 +505,8 @@ function adAge(d) {
   if (d === null || d === undefined) return "";
   return d === 0 ? "امروز" : d === 1 ? "دیروز" : `${fa0.format(d)} روز پیش`;
 }
-function adCard(a, cross = false) {
-  const stats = (cross ? [esc(hoodBySlug[a.hood]?.name ?? a.hood)] : []).concat([`${fa0.format(a.area_m2)} متر`, `ساخت ${toFa(a.year_built)}`], a.floor === null || a.floor === undefined ? [] : [floorText(a.floor)]);
+function adCard(a) {
+  const stats = [`${fa0.format(a.area_m2)} متر`, `ساخت ${toFa(a.year_built)}`].concat(a.floor === null || a.floor === undefined ? [] : [floorText(a.floor)]);
   const tags = [a.parking ? "<span class=\"badge\">پارکینگ</span>" : "<span class=\"badge badge--off\">بدون پارکینگ</span>",
     a.elevator ? "<span class=\"badge\">آسانسور</span>" : "<span class=\"badge badge--off\">بدون آسانسور</span>"]
     .concat(a.renovated ? ["<span class=\"badge\">بازسازی‌شده</span>"] : []).join("");
@@ -680,7 +516,6 @@ function adCard(a, cross = false) {
     + `<dl class="kv ad__price"><div><dt>ودیعه</dt><dd>${m(a.deposit_m)}</dd></div><div><dt>اجارهٔ ماهانه</dt><dd>${m(a.rent_m)}</dd></div>`
     + `<div class="kv--strong"><dt>رهن کامل</dt><dd>${m(a.equiv_m)}</dd></div></dl>`
     + `<div class="ad__foot">${fit}<span class="ad__age">${adAge(a.published_days)}</span>`
-    + (cross ? `<a class="btn btn--text" href="#estimate/result?${query(a.hood, {area_m2: a.area_m2, year_built: a.year_built, floor: a.floor ?? NaN, parking: a.parking, elevator: a.elevator, renovated: a.renovated, complex: a.complex})}">برآورد</a>` : "")
     + `<a class="btn btn--text" href="${esc(a.url)}" target="_blank" rel="noopener">دیوار${icon("i-external")}</a></div></article>`;
 }
 
@@ -723,9 +558,9 @@ function renderAds() {
   more.hidden = ads.length <= R.shown;
 }
 
-function mapIn(boxId) {  // this view's private copy of the Explore map, created on first use
+function mapIn(boxId) {  // this page's copy of the map in <template id="map-tpl">, created on first use
   const box = $(boxId);
-  return box.querySelector("svg.map") || box.appendChild(document.querySelector("#x-map svg.map").cloneNode(true));
+  return box.querySelector("svg.map") || box.appendChild($("map-tpl").content.querySelector("svg.map").cloneNode(true));
 }
 function renderResultMap() {
   const map = mapIn("r-map-box"), f = R.flat;
@@ -733,7 +568,7 @@ function renderResultMap() {
   for (const el of map.querySelectorAll(".sel, .mine")) el.classList.remove("sel", "mine");
   for (const c of map.querySelectorAll(".cell")) {
     const slug = c.dataset.slug, h = hoodBySlug[slug], v = estimate({...f, hood: slug}).equiv;
-    c.setAttribute("href", `#estimate/result?${query(slug, f)}`);
+    c.setAttribute("href", `/estimate/result/?${query(slug, f)}`);
     c.setAttribute("aria-label", `${h.name}: ${fmtB(v)} میلیارد تومان برای واحد شما`);
     const val = map.querySelector(`.lbl[data-slug="${slug}"] .lbl-val`);
     if (val) val.textContent = fmtB(v);
@@ -743,7 +578,7 @@ function renderResultMap() {
       map.querySelector(`.lbl[data-slug="${slug}"]`)?.classList.add("mine");
     }
   }
-  const lg = document.querySelector("#x-map .legend"), base = S.model.baseline;
+  const lg = $("map-tpl").content.querySelector(".legend"), base = S.model.baseline;
   const k = Math.exp(predict({...f, hood: base}).mu - predict({...REF, hood: base}).mu) * f.area_m2 / REF.area_m2;
   const edges = lg.dataset.edges.split(",").map(Number);
   $("r-legend").innerHTML = lg.outerHTML;
@@ -753,6 +588,13 @@ function renderResultMap() {
 }
 
 function initResult() {
+  const params = new URLSearchParams(location.search);
+  if (!priceableHood(params)) return;
+  const flat = flatOf(params);
+  if (!validArea(flat.area_m2) || !validBuilt(flat.year_built)) {
+    location.replace(`/estimate/flat/?${query(params.get("hood"), flat)}&err=1`);
+    return;
+  }
   $("r-ads-key").textContent = `برچسب‌ها: فاصلهٔ قیمت آگهی از برآورد مدل برای همان مشخصات در همان محله. «خیلی» یعنی دست‌کم ${fa0.format(-CUT_LO)}٪ ارزان‌تر یا ${fa0.format(CUT_HI)}٪ گران‌تر.`;
   $("r-dep").addEventListener("input", renderSplit);
   $("r-rate").addEventListener("change", renderSplit);
@@ -777,6 +619,7 @@ function initResult() {
     loadAds(slug).then(ads => { if (R.key === k) { R.ads = ads; renderBand(); renderAds(); } })
       .catch(() => { if (R.key === k) { R.err = true; renderBand(); renderAds(); } });
   });
+  renderResult(params);
 }
 
 // ---- budget -----------------------------------------------------------------------
@@ -809,8 +652,7 @@ function renderBudget(params) {
 }
 function syncBudget() {  // inputs live in the URL (shareable), no new history entry, no re-render
   const b = readBudget();
-  history.replaceState(history.state, "", `#budget?${budgetQuery(b)}`);
-  lastHash = location.hash;
+  history.replaceState(null, "", `/budget/?${budgetQuery(b)}`);
   renderBudgetOut(b);
 }
 function renderBudgetOut(b) {
@@ -823,7 +665,7 @@ function renderBudgetOut(b) {
   sum.textContent = `بودجهٔ شما برابر ${fmtM(B)} میلیون تومان رهن کامل است (اجارهٔ ماهانه با نرخ ${faM1.format(b.rate * 100)}٪ تبدیل شده). `
     + `متراژ یک واحد ${fa0.format(S.year - b.year_built)} ساله، ${floorText(RF.floor)}، ${b.parking ? "با" : "بدون"} پارکینگ و ${b.elevator ? "با" : "بدون"} آسانسور در هر محله:`
     + (rows.some(({a}) => a < SZ0 || a > SZ1) ? ` مدل با آگهی‌های ${fa0.format(SZ0)} تا ${fa0.format(SZ1)} متری ساخته شده؛ بیرون از این بازه دقت کمتر است.` : "");
-  const href = (h, a) => a >= 20 && a <= 300 ? `#estimate/result?${query(h.slug, {...f, area_m2: a})}` : null;
+  const href = (h, a) => a >= 20 && a <= 300 ? `/estimate/result/?${query(h.slug, {...f, area_m2: a})}` : null;
   $("b-list").innerHTML = rows.map(({h, a}) => {
     const to = href(h, a), q = qClassOf(h.slug), inner = (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${fa0.format(h.n)} آگهی</span></span>`
@@ -840,7 +682,7 @@ function renderBudgetOut(b) {
     const lv = map.querySelector(`.lbl[data-slug="${h.slug}"] .lbl-val`);
     if (lv) lv.textContent = a < 20 ? "<۲۰" : a > 300 ? ">۳۰۰" : fa0.format(a);
   }
-  const lg = document.querySelector("#x-map .legend"), base = S.model.baseline;
+  const lg = $("map-tpl").content.querySelector(".legend"), base = S.model.baseline;
   const delta = predict({...f, hood: base}).mu - predict({...REF, area_m2: A0, hood: base}).mu;
   const edges = lg.dataset.edges.split(",").map(Number);
   $("b-legend").innerHTML = lg.outerHTML;
@@ -863,12 +705,11 @@ function initBudget() {
     syncBudget();
   });
   form.addEventListener("submit", ev => ev.preventDefault());
+  renderBudget(new URLSearchParams(location.search));
 }
 
-// ---- wiring ------------------------------------------------------------------------
 let installEv = null;  // Android/Chrome only; iOS installs from the share menu
 function initInstall() {
-  if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(err => console.warn("sw:", err)));
   addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installEv = ev; $("x-install").hidden = false; });
   addEventListener("appinstalled", () => { installEv = null; $("x-install").hidden = true; });
   $("x-install").addEventListener("click", () => {
@@ -881,39 +722,19 @@ function initInstall() {
   });
 }
 
-const PARENT = {result: p => `#estimate/flat?${p}`, flat: p => `#estimate/hood?${p}`, hood: () => "#", budget: () => "#"};
+
 function init() {
-  initExplore();
-  initHoodStep();
-  initFlatStep();
-  initResult();
-  initBudget();
-  initInstall();
+  ({"explore": initExplore, "hood-step": initHoodStep, "flat-step": initFlatStep, "result": initResult, "budget": initBudget})[document.body.dataset.page]();
   document.addEventListener("toggle", ev => {  // toggle does not bubble; capture sees it
     if (ev.target instanceof HTMLDetailsElement && ev.target.open && ev.target.id) track("trackEvent", "section", "open", ev.target.id);
   }, true);
-  document.addEventListener("click", ev => {
-    const a = ev.target.closest('a[href^="https://divar.ir/"]');
-    if (a) track("trackLink", a.href, "link");
-  }, true);
-  document.addEventListener("click", ev => {
+  document.addEventListener("click", ev => {  // app-bar back = browser back when we came from this site, else the parent page
     if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-    const back = ev.target.closest("[data-back]");
-    if (back) {
-      const r = curRoute;
-      goBack(PARENT[r.view](r.params ? query(r.params.get("hood") || "", flatOf(r.params)).replace(/^hood=&/, "") : ""));
-      return;
+    if (ev.target.closest("[data-back]") && history.length > 1 && document.referrer.startsWith(location.origin + "/")) {
+      ev.preventDefault();
+      history.back();
     }
-    const a = ev.target.closest("a[href]");
-    const href = a && a.getAttribute("href");
-    if (!href || !href.startsWith("#")) return;
-    ev.preventDefault();
-    if (href === location.hash) return;
-    go(href, {replace: curRoute.view === "explore" && !!curRoute.sheet && href.startsWith("#hood=")});
   });
-  addEventListener("popstate", render);
-  addEventListener("hashchange", render);
-  render();
 }
 
 init();

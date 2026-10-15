@@ -22,11 +22,12 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://rent.nlogn.ir/hood/university-of-sharif/">
 
-<link rel="stylesheet" href="/style.css?v=f2f95e0a">
+<link rel="stylesheet" href="/style.css?v=8e6fcfd6">
 <script>
 if (location.hostname === "rent.nlogn.ir") {
   var _paq = window._paq = window._paq || [];
-  _paq.push(["disableCookies"], ["setTrackerUrl", "https://matomo.cap.nlogn.ir/matomo.php"], ["setSiteId", "1"], ["trackPageView"]);
+  _paq.push(["disableCookies"], ["setTrackerUrl", "https://matomo.cap.nlogn.ir/matomo.php"], ["setSiteId", "1"],
+    ["setCustomUrl", location.origin + location.pathname], ["trackPageView"], ["enableLinkTracking"]);
   addEventListener("load", function () {
     var t = document.createElement("script");
     t.async = true;
@@ -36,7 +37,7 @@ if (location.hostname === "rent.nlogn.ir") {
 }
 </script>
 </head>
-<body>
+<body data-page="">
 <svg xmlns="http://www.w3.org/2000/svg" hidden>
 <symbol id="i-back" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
@@ -50,10 +51,11 @@ if (location.hostname === "rent.nlogn.ir") {
 </svg>
 <main class="view">
   <header class="appbar">
-    <a class="iconbtn" href="/" aria-label="صفحهٔ اصلی"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></a>
-    <span class="appbar__title">اجارهٔ غرب تهران</span>
-    <span class="chip chip--static">برداشت ۱۴۰۵/۰۷/۲۱</span>
-  </header>
+  <a class="iconbtn" href="/" aria-label="صفحهٔ اصلی"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></a>
+  <span class="appbar__title">اجارهٔ غرب تهران</span>
+  <span class="chip chip--static">برداشت ۱۴۰۵/۰۷/۲۱</span>
+</header>
+
   <h1 class="step-title">اجارهٔ آپارتمان در دانشگاه شریف</h1>
   <p class="muted">برآورد هفتگی از ۹۳ آگهی اجارهٔ دیوار در دانشگاه شریف؛ برداشت ۱۴۰۵/۰۷/۲۱.</p>
   <section class="card price">
@@ -67,7 +69,7 @@ if (location.hostname === "rent.nlogn.ir") {
       <div><dt>میانهٔ متراژ و عمر بنا</dt><dd>۷۷ متر، ۱۰ سال</dd></div>
     </dl>
   </section>
-  <p><a class="btn btn--primary btn--block" href="/#estimate/flat?hood=university-of-sharif">برآورد واحد من در دانشگاه شریف</a></p>
+  <p><a class="btn btn--primary btn--block" href="/estimate/flat/?hood=university-of-sharif">برآورد واحد من در دانشگاه شریف</a></p>
   <p><a class="btn btn--secondary btn--block" href="/#hood=university-of-sharif">دانشگاه شریف روی نقشه</a></p>
   <h2>محله‌های نزدیک</h2>
   <div class="chips">
@@ -78,13 +80,13 @@ if (location.hostname === "rent.nlogn.ir") {
   </div>
   <h2>این عدد از کجا می‌آید؟</h2>
   <p>هر آگهی به معادل رهن کامل تبدیل می‌شود (ودیعه + اجارهٔ ماهانه ÷ ۰٫۰۳) و مدلی روی همهٔ آگهی‌های غرب تهران اثر محله، متراژ، عمر بنا و امکانات را جدا می‌کند. اعداد قیمت پیشنهادی آگهی‌اند، نه قرارداد.</p>
-  <p><a href="/#method">روش کار و محدودیت‌ها</a></p>
+  <p><a href="/method/">روش کار و محدودیت‌ها</a></p>
 <footer class="foot">
   <p>منبع: آگهی‌های عمومی دیوار. اعداد، قیمت‌های پیشنهادی آگهی‌دهندگان‌اند، نه قراردادهای بسته‌شده. این صفحه مشاورهٔ مالی یا حقوقی نیست.</p>
   <p id="built-on">ساخته‌شده در ۱۴۰۵/۰۷/۲۱</p>
   <p>پیشنهاد یا اصلاح: <a href="mailto:caci96@gmail.com">caci96@gmail.com</a>، <a href="https://github.com/Fazel94/sazman-barnameh-rent">کد و داده در GitHub</a></p>
 <p>آمار بازدید بدون کوکی و با نشانی IP ناشناس‌شده در Matomo خود این سایت ثبت می‌شود.</p></footer>
 </main>
-<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
+<script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));</script>
 </body>
 </html>

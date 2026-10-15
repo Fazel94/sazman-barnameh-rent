@@ -63,7 +63,7 @@ h1:focus,h2:focus{outline:0}
 .row__main{flex:1;display:flex;flex-direction:column;min-width:0}
 .row__title{font-weight:600}
 .row__sub{font-size:var(--fs-sm);color:var(--muted)}
-.row[disabled]{opacity:.5;cursor:default}
+.row[disabled],.row[aria-disabled=true]{opacity:.5;cursor:default}
 .row[aria-current=true] .row__title{color:var(--accent)}
 .row .icon--fwd{color:var(--muted)}
 .row__val{font-weight:800;white-space:nowrap}
@@ -190,3 +190,4 @@ svg.chart circle.line{fill:var(--accent)}
 @keyframes pulse{50%{opacity:.5}}
 @keyframes glow{50%{stroke:var(--accent);stroke-width:4}}
 @media(prefers-reduced-motion:reduce){*,::before,::after{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:no-preference){@view-transition{navigation:auto}}
