@@ -54,6 +54,8 @@ const NAMES = S.model.names;
 const K = (i => i < 0 ? NAMES.length : i)(NAMES.findIndex(n => n.startsWith("hood:")));
 const FEAT = NAMES.slice(0, K).map(feature);
 const HOOD_COL = Object.fromEntries(S.model.hoods.map((slug, j) => [slug, j]));   // baseline / unpriced → undefined
+const BETA = Object.fromEntries(NAMES.slice(0, K).map((n, i) => [n, S.model.beta[i]]));
+const SIZE = `log(size/${S.model.ref_area})`;
 function predict(f) {  // mirror of model.predict: mu and the one-flat SE of log(M/m²)
   const x = FEAT.map(g => g(f)), j = HOOD_COL[f.hood], {beta, cov_ff, cov_fh, var_h, sigma} = S.model;
   let mu = 0, v = 0;
@@ -130,6 +132,7 @@ function parseRoute(hash) {
   if (h === "method") return {view: "explore", method: true};
   if (h === "calc") return {view: "hood", params: new URLSearchParams(), canonical: "#estimate/hood"};
   if ((m = h.match(/^estimate\/(hood|flat|result)(?:\?(.*))?$/))) return {view: m[1], params: new URLSearchParams(m[2] || "")};
+  if ((m = h.match(/^budget(?:\?(.*))?$/))) return {view: "budget", params: new URLSearchParams(m[1] || "")};
   return {view: "explore"};
 }
 function flatOf(p) {
@@ -154,6 +157,20 @@ function go(hash, {replace = false} = {}) {
 }
 const goBack = parent => history.state?.app ? history.back() : go(parent, {replace: true});
 
+// Matomo: base.html defines window._paq on rent.nlogn.ir only; elsewhere these are no-ops.
+const track = (...cmd) => { if (window._paq) window._paq.push(cmd); };
+let trackedUrl = null;
+function trackView(r) {  // one virtual page per route; the flat's details never leave the page
+  const path = r.view === "explore" ? (r.sheet ? `/hood-sheet/${r.sheet}` : r.method ? "/method" : "/")
+    : r.view === "result" ? `/estimate/result/${r.params.get("hood")}`
+    : r.view === "budget" ? "/budget" : `/estimate/${r.view}`;
+  const url = location.origin + path;
+  if (trackedUrl) track("setReferrerUrl", trackedUrl);
+  track("setCustomUrl", url);
+  track("setDocumentTitle", path);
+  track("trackPageView");
+  trackedUrl = url;
+}
 let lastHash = null, curRoute = {view: "explore"}, exploreY = 0, firstRender = true;
 function render() {
   const hash = location.hash || "#";
@@ -162,16 +179,17 @@ function render() {
   const r = parseRoute(hash);
   if (r.canonical) { history.replaceState(history.state, "", r.canonical); lastHash = r.canonical; }
   const prev = curRoute;
-  if (r.view !== "explore" && !checkHood(r)) return;
+  if ((r.view === "flat" || r.view === "result") && !checkHood(r)) return;
   if (r.view === "result" && !checkFlat(r)) return;
   if (prev.view === "explore" && r.view !== "explore") exploreY = scrollY;
   curRoute = r;
-  for (const [v, id] of [["explore", "v-explore"], ["hood", "v-hood"], ["flat", "v-flat"], ["result", "v-result"]])
+  for (const [v, id] of [["explore", "v-explore"], ["hood", "v-hood"], ["flat", "v-flat"], ["result", "v-result"], ["budget", "v-budget"]])
     $(id).hidden = v !== r.view;
   if (r.view !== "explore") document.body.style.paddingBottom = "";
   if (r.view === "explore") renderExplore(r);
   else if (r.view === "hood") renderHoodStep(r.params);
   else if (r.view === "flat") renderFlatStep(r.params);
+  else if (r.view === "budget") renderBudget(r.params);
   else renderResult(r.params);
   if (r.view === "explore") {
     if (prev.view !== "explore") scrollTo(0, exploreY);
@@ -185,10 +203,10 @@ function render() {
     $(`v-${r.view}`).querySelector("h1").focus({preventScroll: true});
   }
   firstRender = false;
+  trackView(r);
 }
 // hood / flat / result need a priced hood; otherwise replace with step 1 (+ toast for a known but unpriced hood)
 function checkHood(r) {
-  if (r.view === "hood") return true;
   const h = hoodBySlug[r.params.get("hood")];
   if (h && priced(h)) return true;
   if (h) toast(`برای ${h.name} داده کافی نیست.`);
@@ -208,15 +226,15 @@ function initExplore() {
   $("x-date").textContent = `برداشت ${toFa(S.jalali)}`;
   $("x-sub").textContent = `رهن کامل یک واحد ${fa0.format(RF.area_m2)} متری ${fa0.format(RF.age)} ساله `
     + `(${floorText(RF.floor)}، با پارکینگ و آسانسور) در هر محله؛ از ${fa0.format(S.counts.peers)} آگهی دیوار.`;
-  $("built-on").textContent = `ساخته‌شده در ${toFa(S.jalali)}`;
   renderMethodCounts();
   renderData();
   if (S.age === null) $("acc-market").hidden = true;
-  const lazy = {"acc-effects": renderEffects, "acc-market": renderMarket, "acc-history": renderHistory};
+  const lazy = {"acc-deals": renderDeals, "acc-effects": renderEffects, "acc-market": renderMarket, "acc-history": renderHistory};
   for (const [id, fn] of Object.entries(lazy)) {
     const d = $(id);
     d.addEventListener("toggle", () => { if (d.open && !d.dataset.done) { d.dataset.done = "1"; fn(); } });
   }
+  $("deals-list").addEventListener("click", ev => { if (ev.target.closest("[data-act=deals-retry]")) renderDeals(); });
   $("x-pick").addEventListener("click", () => {
     const map = document.querySelector("#x-map svg.map");
     $("x-map").scrollIntoView({block: "start", behavior: "smooth"});
@@ -259,7 +277,8 @@ function renderExplore(r) {
       + `<p class="price price--sheet"><span class="price__value">${fmtM(h.ref_equiv)} <span class="price__unit">میلیون تومان رهن کامل</span></span></p>`
       + `<p class="price__sub">۹۵٪ آگهی‌های چنین واحدی: ${fmtM(h.band_one[0])} تا ${fmtM(h.band_one[1])}</p>`
       + `<dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` + near
-      + `<a class="btn btn--primary btn--block" href="#estimate/flat?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`;
+      + `<a class="btn btn--primary btn--block" href="#estimate/flat?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`
+      + `<a class="btn btn--text btn--block" href="/hood/${h.slug}/">صفحهٔ ${esc(h.name)}</a>`;
   }
   $("x-sheet-body").innerHTML = body;
   const wasHidden = sheet.hidden;
@@ -416,11 +435,12 @@ const BUILT_MSG = () => `سال ساخت را بین ۱۳۰۰ و ${toFa(S.year)}
 const [SZ0, SZ1] = S.zone.size_m2;
 const SIZE_HINT = `مدل با آگهی‌های ${fa0.format(SZ0)} تا ${fa0.format(SZ1)} متری ساخته شده؛ برای این متراژ دقت کمتر است.`;
 const readArea = () => parseIntFa($("f-area").value);
-function readBuilt() {
-  const t = toAscii($("f-built").value).replace(/[٬,\s]/g, "");
+function parseBuilt(s) {
+  const t = toAscii(s).replace(/[٬,\s]/g, "");
   const v = parseIntFa(t);
   return Number.isNaN(v) || t.length > 2 ? v : v >= 50 ? 1300 + v : 1400 + v;
 }
+const readBuilt = () => parseBuilt($("f-built").value);
 function readFlat() {
   const chip = k => document.querySelector(`#f-form .chip[data-key="${k}"]`).getAttribute("aria-pressed") === "true";
   return {area_m2: readArea(), year_built: readBuilt(), floor: +$("f-floor").dataset.v, parking: chip("parking"),
@@ -525,6 +545,7 @@ function renderResult(params) {
   dep.value = Math.min(round50(h.median_deposit ?? 0), max);
   $("r-rate").value = String(S.rate);
   renderSplit();
+  renderWhy();
   $("r-basis").textContent = `بر پایهٔ ${fa0.format(h.n)} آگهی ${h.name} و مدلی از ${fa0.format(S.counts.peers)} آگهی غرب تهران، برداشت ${toFa(S.jalali)}`;
   readOffer();
   renderBand();
@@ -543,6 +564,59 @@ function renderSplit() {
   $("r-rate-note").textContent = `هر ۱۰۰ میلیون تومان ودیعه ≈ ${faM1.format(rate * 100)} میلیون اجارهٔ ماهانه (نرخ ${faM1.format(rate * 100)}٪). `
     + `مدل با نرخ ۳٪ (میانهٔ نرخ خود آگهی‌دهندگان در ${fa0.format(S.poster_rate.n)} آگهی قابل تبدیل) برازش شده؛ `
     + `نرخ انتخابی فقط تقسیم ودیعه/اجاره را تغییر می‌دهد.`;
+}
+
+// Zone-median reference flat → this hood → each way the user's flat differs from the reference flat. The model is
+// log-additive and the size term is exact ((A/75)^(1+βs)), so the product of the factors is the estimate itself.
+function whySteps(f) {
+  const b = BETA, age = S.year - f.year_built, fl = flights(f.floor, f.elevator), flRef = flights(RF.floor, RF.elevator);
+  const zoneRef = zoneMedian() * RF.area_m2, hoodRef = Math.exp(predict({...REF, hood: f.hood}).mu) * RF.area_m2;
+  const rows = [[`${hoodBySlug[f.hood].name} نسبت به میانهٔ محله‌ها`, hoodRef / zoneRef]];
+  if (f.area_m2 !== RF.area_m2) rows.push([`${fa0.format(f.area_m2)} متر به‌جای ${fa0.format(RF.area_m2)}`, (f.area_m2 / RF.area_m2) ** (1 + b[SIZE])]);
+  if (age !== RF.age) rows.push([`${fa0.format(age)} سال عمر به‌جای ${fa0.format(RF.age)}`, Math.exp(b.age * (age - RF.age))]);
+  if (f.elevator !== RF.elevator) rows.push([f.elevator ? "با آسانسور" : "بدون آسانسور", Math.exp(b.elevator * (f.elevator - RF.elevator))]);
+  if (fl !== flRef) rows.push([`${fa0.format(fl)} طبقه پله`, Math.exp(b.flights * (fl - flRef))]);
+  if (f.parking !== RF.parking) rows.push([f.parking ? "با پارکینگ" : "بدون پارکینگ", Math.exp(b.parking * (f.parking - RF.parking))]);
+  if (f.renovated !== RF.renovated) rows.push([f.renovated ? "بازسازی‌شده" : "بازسازی‌نشده", Math.exp(b.renovated * (f.renovated - RF.renovated))]);
+  if (f.complex !== RF.complex) rows.push([f.complex ? "مجتمع/شهرک" : "غیر مجتمع", Math.exp(b.complex * (f.complex - RF.complex))]);
+  return {zoneRef, rows};
+}
+function renderWhy() {
+  const {zoneRef, rows} = whySteps(R.flat);
+  const li = (k, d, v, cls) => `<li${cls ? ` class="${cls}"` : ""}><span class="why__k">${k}</span><span class="why__d">${d}</span><span class="why__v">${fmtM(v)}</span></li>`;
+  let v = zoneRef;
+  $("r-why-list").innerHTML = li(`واحد مرجع، میانهٔ ${fa0.format(S.zone.hoods_solid)} محله`, "", zoneRef)
+    + rows.map(([k, x]) => li(esc(k), pct((x - 1) * 100), v *= x)).join("")
+    + li("برآورد واحد شما", "", R.est.equiv, "why__total");
+}
+
+// CarGurus-style levels from the model gap: ±σ and ±0.4σ in log space, compared in percent so they match
+// site_data.deals() on the rounded vs_fit_pct.
+const SIG = S.model.sigma;
+const CUT_LO = -(1 - Math.exp(-SIG)) * 100, CUT_HI = (Math.exp(SIG) - 1) * 100;
+const NEAR_LO = -(1 - Math.exp(-0.4 * SIG)) * 100, NEAR_HI = (Math.exp(0.4 * SIG) - 1) * 100;
+function dealBadge(v) {
+  const p = faM1.format(Math.abs(v));
+  if (v <= CUT_LO) return `<span class="badge badge--pos badge--strong">خیلی زیر برآورد، ${p}٪</span>`;
+  if (v <= NEAR_LO) return `<span class="badge badge--pos">زیر برآورد، ${p}٪</span>`;
+  if (v < NEAR_HI) return '<span class="badge">نزدیک برآورد</span>';
+  if (v < CUT_HI) return `<span class="badge badge--neg">بالای برآورد، ${p}٪</span>`;
+  return `<span class="badge badge--neg badge--strong">خیلی بالای برآورد، ${p}٪</span>`;
+}
+
+let deals = null;
+function renderDeals() {
+  const list = $("deals-list");
+  $("deals-note").textContent = `آگهی‌های ۱۴ روز اخیر در محله‌های پرآگهی که دست‌کم ${fa0.format(-CUT_LO)}٪ زیر برآورد مدل برای همان مشخصات‌اند، بیشترین فاصله اول. `
+    + "ارزانی ممکن است دلیلی داشته باشد که در آگهی نیامده (زیرزمین، وضعیت بنا، شرایط خاص)؛ آگهی را کامل بخوانید.";
+  if (deals) {
+    list.innerHTML = deals.length ? deals.map(a => adCard(a, true)).join("") : '<div class="empty"><p>این هفته آگهی تازه‌ای با این فاصله نیست.</p></div>';
+    return;
+  }
+  list.innerHTML = '<div class="skeleton skeleton--ad"></div>'.repeat(3);
+  fetch("data/deals.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => { deals = d; renderDeals(); })
+    .catch(() => { list.innerHTML = '<div class="empty"><p>آگهی‌ها بارگذاری نشد.</p><button type="button" class="btn btn--secondary" data-act="deals-retry">تلاش دوباره</button></div>'; });
 }
 
 function bandSvg({lo, hi, est, dots, offer, loading}) {
@@ -595,18 +669,18 @@ function adAge(d) {
   if (d === null || d === undefined) return "";
   return d === 0 ? "امروز" : d === 1 ? "دیروز" : `${fa0.format(d)} روز پیش`;
 }
-function adCard(a) {
-  const stats = [`${fa0.format(a.area_m2)} متر`, `ساخت ${toFa(a.year_built)}`].concat(a.floor === null || a.floor === undefined ? [] : [floorText(a.floor)]);
+function adCard(a, cross = false) {
+  const stats = (cross ? [esc(hoodBySlug[a.hood]?.name ?? a.hood)] : []).concat([`${fa0.format(a.area_m2)} متر`, `ساخت ${toFa(a.year_built)}`], a.floor === null || a.floor === undefined ? [] : [floorText(a.floor)]);
   const tags = [a.parking ? "<span class=\"badge\">پارکینگ</span>" : "<span class=\"badge badge--off\">بدون پارکینگ</span>",
     a.elevator ? "<span class=\"badge\">آسانسور</span>" : "<span class=\"badge badge--off\">بدون آسانسور</span>"]
     .concat(a.renovated ? ["<span class=\"badge\">بازسازی‌شده</span>"] : []).join("");
-  const v = a.vs_fit_pct, fit = v < 0 ? `<span class="badge badge--pos">${faM1.format(Math.abs(v))}٪ زیر برآورد</span>`
-    : v > 0 ? `<span class="badge badge--neg">${faM1.format(v)}٪ بالای برآورد</span>` : '<span class="badge">برابر برآورد</span>';
+  const fit = dealBadge(a.vs_fit_pct);
   const m = x => x === null || x === undefined ? "—" : fmtM(x);
   return `<article class="ad"><p class="ad__stats">${stats.join("، ")}</p><div class="ad__tags">${tags}</div>`
     + `<dl class="kv ad__price"><div><dt>ودیعه</dt><dd>${m(a.deposit_m)}</dd></div><div><dt>اجارهٔ ماهانه</dt><dd>${m(a.rent_m)}</dd></div>`
     + `<div class="kv--strong"><dt>رهن کامل</dt><dd>${m(a.equiv_m)}</dd></div></dl>`
     + `<div class="ad__foot">${fit}<span class="ad__age">${adAge(a.published_days)}</span>`
+    + (cross ? `<a class="btn btn--text" href="#estimate/result?${query(a.hood, {area_m2: a.area_m2, year_built: a.year_built, floor: a.floor ?? NaN, parking: a.parking, elevator: a.elevator, renovated: a.renovated, complex: a.complex})}">برآورد</a>` : "")
     + `<a class="btn btn--text" href="${esc(a.url)}" target="_blank" rel="noopener">دیوار${icon("i-external")}</a></div></article>`;
 }
 
@@ -649,14 +723,12 @@ function renderAds() {
   more.hidden = ads.length <= R.shown;
 }
 
-let mapCloned = false;
+function mapIn(boxId) {  // this view's private copy of the Explore map, created on first use
+  const box = $(boxId);
+  return box.querySelector("svg.map") || box.appendChild(document.querySelector("#x-map svg.map").cloneNode(true));
+}
 function renderResultMap() {
-  const box = $("r-map-box");
-  if (!mapCloned) {
-    box.appendChild(document.querySelector("#x-map svg.map").cloneNode(true));
-    mapCloned = true;
-  }
-  const map = box.querySelector("svg.map"), f = R.flat;
+  const map = mapIn("r-map-box"), f = R.flat;
   map.classList.remove("hint");
   for (const el of map.querySelectorAll(".sel, .mine")) el.classList.remove("sel", "mine");
   for (const c of map.querySelectorAll(".cell")) {
@@ -681,6 +753,7 @@ function renderResultMap() {
 }
 
 function initResult() {
+  $("r-ads-key").textContent = `برچسب‌ها: فاصلهٔ قیمت آگهی از برآورد مدل برای همان مشخصات در همان محله. «خیلی» یعنی دست‌کم ${fa0.format(-CUT_LO)}٪ ارزان‌تر یا ${fa0.format(CUT_HI)}٪ گران‌تر.`;
   $("r-dep").addEventListener("input", renderSplit);
   $("r-rate").addEventListener("change", renderSplit);
   for (const id of ["o-dep", "o-rent"]) $(id).addEventListener("input", () => { readOffer(); renderBand(); });
@@ -706,13 +779,123 @@ function initResult() {
   });
 }
 
+// ---- budget -----------------------------------------------------------------------
+const A0 = S.model.ref_area, BS = BETA[SIZE];
+const areaFor = (B, c) => A0 * (B / (A0 * Math.exp(c))) ** (1 / (1 + BS));
+const RATES = [0.025, 0.03, 0.035, 0.04];
+const nz = x => Number.isNaN(x) ? 0 : x;
+function budgetOf(p) {  // URL → inputs; build year defaults to the reference flat's
+  const num = k => parseNumFa(p.get(k) || ""), built = parseIntFa(p.get("built") || "");
+  return {dep: num("dep"), rent: num("rent"), rate: RATES.includes(+p.get("rate")) ? +p.get("rate") : S.rate,
+          year_built: validBuilt(built) ? built : REF.year_built, builtSet: validBuilt(built),
+          parking: p.get("parking") !== "0", elevator: p.get("elevator") !== "0"};
+}
+function readBudget() {
+  const chip = k => document.querySelector(`#b-form .chip[data-key="${k}"]`).getAttribute("aria-pressed") === "true";
+  const built = parseBuilt($("b-built").value);
+  return {dep: parseNumFa($("b-dep").value), rent: parseNumFa($("b-rent").value), rate: +$("b-rate").value,
+          year_built: validBuilt(built) ? built : REF.year_built, builtSet: validBuilt(built), parking: chip("parking"), elevator: chip("elevator")};
+}
+const budgetQuery = b => Object.entries({dep: b.dep, rent: b.rent, rate: b.rate, built: b.builtSet ? b.year_built : NaN,
+  parking: +b.parking, elevator: +b.elevator}).filter(([, x]) => !Number.isNaN(x)).map(([k, x]) => `${k}=${x}`).join("&");
+function renderBudget(params) {
+  const b = budgetOf(params);
+  $("b-dep").value = Number.isNaN(b.dep) ? "" : toFa(b.dep);
+  $("b-rent").value = Number.isNaN(b.rent) ? "" : toFa(b.rent);
+  $("b-rate").value = String(b.rate);
+  $("b-built").value = b.builtSet ? toFa(b.year_built) : "";
+  for (const c of document.querySelectorAll("#b-form .chip")) c.setAttribute("aria-pressed", String(b[c.dataset.key]));
+  renderBudgetOut(b);
+}
+function syncBudget() {  // inputs live in the URL (shareable), no new history entry, no re-render
+  const b = readBudget();
+  history.replaceState(history.state, "", `#budget?${budgetQuery(b)}`);
+  lastHash = location.hash;
+  renderBudgetOut(b);
+}
+function renderBudgetOut(b) {
+  const out = $("b-out"), sum = $("b-summary"), B = nz(b.dep) + nz(b.rent) / b.rate;
+  if (!(B > 0)) { out.hidden = true; sum.textContent = "ودیعه یا اجارهٔ ماهانه را وارد کنید."; return; }
+  if (!(1 + BS > 0.05)) { out.hidden = true; sum.textContent = "محاسبهٔ بودجه با مدل این هفته ممکن نیست."; return; }
+  const f = {year_built: b.year_built, floor: RF.floor, parking: b.parking, elevator: b.elevator, renovated: false, complex: false, area_m2: A0};
+  const rows = S.hoods.filter(priced).map(h => ({h, a: Math.round(areaFor(B, predict({...f, hood: h.slug}).mu))})).sort((x, y) => y.a - x.a);
+  const val = a => a < 20 ? "کمتر از ۲۰ متر" : a > 300 ? "بیش از ۳۰۰ متر" : `${fa0.format(a)} متر`;
+  sum.textContent = `بودجهٔ شما برابر ${fmtM(B)} میلیون تومان رهن کامل است (اجارهٔ ماهانه با نرخ ${faM1.format(b.rate * 100)}٪ تبدیل شده). `
+    + `متراژ یک واحد ${fa0.format(S.year - b.year_built)} ساله، ${floorText(RF.floor)}، ${b.parking ? "با" : "بدون"} پارکینگ و ${b.elevator ? "با" : "بدون"} آسانسور در هر محله:`
+    + (rows.some(({a}) => a < SZ0 || a > SZ1) ? ` مدل با آگهی‌های ${fa0.format(SZ0)} تا ${fa0.format(SZ1)} متری ساخته شده؛ بیرون از این بازه دقت کمتر است.` : "");
+  const href = (h, a) => a >= 20 && a <= 300 ? `#estimate/result?${query(h.slug, {...f, area_m2: a})}` : null;
+  $("b-list").innerHTML = rows.map(({h, a}) => {
+    const to = href(h, a), q = qClassOf(h.slug), inner = (q ? `<span class="row__swatch ${q}"></span>` : "")
+      + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${fa0.format(h.n)} آگهی</span></span>`
+      + (low(h) ? badgeLow : "") + `<span class="row__val">${val(a)}</span>` + (to ? icon("i-chevron", "icon--fwd") : "");
+    return `<li>${to ? `<a class="row" href="${to}">${inner}</a>` : `<span class="row">${inner}</span>`}</li>`;
+  }).join("");
+  const map = mapIn("b-map-box"), by = Object.fromEntries(rows.map(r => [r.h.slug, r]));
+  for (const el of map.querySelectorAll(".sel, .mine")) el.classList.remove("sel", "mine");
+  map.classList.remove("hint");
+  for (const c of map.querySelectorAll(".cell")) {
+    const {h, a} = by[c.dataset.slug], to = href(h, a);
+    if (to) c.setAttribute("href", to); else c.removeAttribute("href");
+    c.setAttribute("aria-label", `${h.name}: ${val(a)} با این بودجه`);
+    const lv = map.querySelector(`.lbl[data-slug="${h.slug}"] .lbl-val`);
+    if (lv) lv.textContent = a < 20 ? "<۲۰" : a > 300 ? ">۳۰۰" : fa0.format(a);
+  }
+  const lg = document.querySelector("#x-map .legend"), base = S.model.baseline;
+  const delta = predict({...f, hood: base}).mu - predict({...REF, area_m2: A0, hood: base}).mu;
+  const edges = lg.dataset.edges.split(",").map(Number);
+  $("b-legend").innerHTML = lg.outerHTML;
+  const nl = $("b-legend").querySelector(".legend");
+  nl.querySelector(".legend__title").textContent = "متراژ با این بودجه (متر)";
+  nl.querySelectorAll(".legend__ticks span").forEach((s, i) => {
+    s.textContent = fa0.format(Math.round(areaFor(B, Math.log(edges[i] / RF.area_m2) - BS * Math.log(RF.area_m2 / A0) + delta)));
+  });
+  out.hidden = false;
+}
+function initBudget() {
+  $("b-built").placeholder = `مثلاً ${toFa(REF.year_built)}`;
+  const form = $("b-form");
+  form.addEventListener("input", syncBudget);
+  form.addEventListener("change", syncBudget);
+  form.addEventListener("click", ev => {
+    const c = ev.target.closest(".chip");
+    if (!c) return;
+    c.setAttribute("aria-pressed", String(c.getAttribute("aria-pressed") !== "true"));
+    syncBudget();
+  });
+  form.addEventListener("submit", ev => ev.preventDefault());
+}
+
 // ---- wiring ------------------------------------------------------------------------
-const PARENT = {result: p => `#estimate/flat?${p}`, flat: p => `#estimate/hood?${p}`, hood: () => "#"};
+let installEv = null;  // Android/Chrome only; iOS installs from the share menu
+function initInstall() {
+  if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(err => console.warn("sw:", err)));
+  addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installEv = ev; $("x-install").hidden = false; });
+  addEventListener("appinstalled", () => { installEv = null; $("x-install").hidden = true; });
+  $("x-install").addEventListener("click", () => {
+    const ev = installEv;
+    if (!ev) return;
+    installEv = null;
+    $("x-install").hidden = true;
+    ev.prompt();
+    ev.userChoice.then(c => track("trackEvent", "pwa", "install_prompt", c.outcome));
+  });
+}
+
+const PARENT = {result: p => `#estimate/flat?${p}`, flat: p => `#estimate/hood?${p}`, hood: () => "#", budget: () => "#"};
 function init() {
   initExplore();
   initHoodStep();
   initFlatStep();
   initResult();
+  initBudget();
+  initInstall();
+  document.addEventListener("toggle", ev => {  // toggle does not bubble; capture sees it
+    if (ev.target instanceof HTMLDetailsElement && ev.target.open && ev.target.id) track("trackEvent", "section", "open", ev.target.id);
+  }, true);
+  document.addEventListener("click", ev => {
+    const a = ev.target.closest('a[href^="https://divar.ir/"]');
+    if (a) track("trackLink", a.href, "link");
+  }, true);
   document.addEventListener("click", ev => {
     if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
     const back = ev.target.closest("[data-back]");

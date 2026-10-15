@@ -66,6 +66,7 @@ h1:focus,h2:focus{outline:0}
 .row[disabled]{opacity:.5;cursor:default}
 .row[aria-current=true] .row__title{color:var(--accent)}
 .row .icon--fwd{color:var(--muted)}
+.row__val{font-weight:800;white-space:nowrap}
 .card{background:var(--surface);border-radius:var(--r-md);padding:var(--sp-4);margin:var(--sp-3) 0}
 .price__label{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 .price__value{margin:0;font-size:var(--fs-2xl);font-weight:800;line-height:1.1}
@@ -122,6 +123,14 @@ select{border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp
 .acc[open] summary .icon{transform:rotate(180deg)}
 .acc__body{padding-bottom:var(--sp-4)}
 .acc__body li{margin-bottom:var(--sp-2)}
+.why{list-style:none;margin:0 0 var(--sp-2);padding:0}
+.why li{display:flex;align-items:baseline;gap:var(--sp-2);margin:0;padding:var(--sp-2) 0;border-bottom:1px solid var(--border)}
+.why__k{flex:1}
+.why__d{font-size:var(--fs-sm);color:var(--muted)}
+.why__v{font-weight:600;min-width:5ch;text-align:end}
+.why__total{font-weight:800;border-bottom:0}
+.badge--strong.badge--pos{background:var(--pos);color:var(--bg)}
+.badge--strong.badge--neg{background:var(--neg);color:var(--bg)}
 .accs{margin-top:var(--sp-5);border-top:1px solid var(--border)}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-2);margin:var(--sp-3) 0}
 .tile{display:flex;flex-direction:column;background:var(--surface);border-radius:var(--r-md);padding:var(--sp-3);color:var(--fg);text-decoration:none;min-width:0}

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://rent.nlogn.ir/sitemap.xml
