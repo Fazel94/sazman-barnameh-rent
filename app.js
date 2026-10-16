@@ -1,5 +1,5 @@
 "use strict";
-// One script for every page: <body data-page> picks the init (explore, hood-step, flat-step, result, budget);
+// One script for every page: <body data-page> picks the init (explore, hoods, flat-step, result, budget);
 // data is the inline #snapshot; per-hood ads load from /data/ads/<slug>.json on demand. Mirrors estimate.py's model.
 
 const S = JSON.parse(document.getElementById("snapshot").textContent);
@@ -112,10 +112,11 @@ function toast(msg) {
 
 // ---- shared -----------------------------------------------------------------------
 const KEYS = ["hood", "area", "built", "floor", "parking", "elevator", "renovated", "complex"];
-function flatOf(p) {
+function flatOf(p) {  // URL → flat; an absent key takes the reference flat's value (the form's defaults)
   const int = k => /^\d+$/.test(p.get(k) || "") ? +p.get(k) : NaN;
   const floor = int("floor");
-  return {area_m2: int("area"), year_built: int("built"), floor: Number.isNaN(floor) ? RF.floor : clamp(floor, 0, 30),
+  return {area_m2: p.has("area") ? int("area") : REF.area_m2, year_built: p.has("built") ? int("built") : REF.year_built,
+          floor: Number.isNaN(floor) ? RF.floor : clamp(floor, 0, 30),
           parking: p.get("parking") !== "0", elevator: p.get("elevator") !== "0",
           renovated: p.get("renovated") === "1", complex: p.get("complex") === "1"};
 }
@@ -124,13 +125,15 @@ function query(hood, f) {
              renovated: +f.renovated, complex: +f.complex};
   return KEYS.filter(k => v[k] !== undefined && v[k] !== null && !Number.isNaN(v[k])).map(k => `${k}=${v[k]}`).join("&");
 }
+const flatText = f => [`${fa0.format(f.area_m2)} متر`, `ساخت ${toFa(f.year_built)}`, floorText(f.floor)]
+  .concat([["parking", "پارکینگ"], ["elevator", "آسانسور"], ["renovated", "بازسازی‌شده"], ["complex", "مجتمع"]].filter(([k]) => f[k]).map(([, v]) => v)).join("، ");
 const validArea = a => Number.isInteger(a) && a >= 20 && a <= 300;
 const validBuilt = y => Number.isInteger(y) && y >= 1300 && y <= S.year;
-// the hood this page needs; otherwise step 1 (which toasts for a known but unpriced hood)
+// the result's hood; otherwise the hoods page for this flat (which toasts a known but unpriced hood)
 function priceableHood(params) {
   const h = hoodBySlug[params.get("hood")];
   if (h && priced(h)) return h;
-  location.replace(`/estimate/${h ? `?hood=${h.slug}` : ""}`);
+  location.replace(`/estimate/?${query(h ? h.slug : null, flatOf(params))}`);
   return null;
 }
 
@@ -213,16 +216,17 @@ function renderSheet(focus) {
   if (wasHidden && focus) $("x-sheet-title").focus({preventScroll: true});
 }
 
-// ---- step 1: hood -------------------------------------------------------------------
+// ---- hoods: one flat priced in every hood (map, search, list) ---------------------------------
 const STOP = new Set(["خیابان", "خ", "بلوار", "میدان", "کوچه", "بزرگراه"]);
 const SEARCH = S.hoods.map(h => ({h, key: norm(h.name).replace(/ /g, ""),
   streets: (h.streets || []).map(s => [s, norm(s).replace(/ /g, "")])}));
-const BY_NAME = [...S.hoods].sort((a, b) => a.name.localeCompare(b.name, "fa"));
-let hoodParams = new URLSearchParams();
+// cheap → dear for every flat (the hood effect is one additive log term); unpriced hoods last
+const BY_PRICE = [...S.hoods].sort((a, b) => (a.ref_ppm ?? Infinity) - (b.ref_ppm ?? Infinity) || a.name.localeCompare(b.name, "fa"));
+let hoodsFlat = null, hoodsCur = null;
 
 function searchHoods(q) {
   const words = norm(q).split(" ").filter(w => w && !STOP.has(w));
-  if (!words.length) return BY_NAME.map(h => ({h}));
+  if (!words.length) return BY_PRICE.map(h => ({h}));
   const all = s => words.every(w => s.includes(w)), byN = (a, b) => b.h.n - a.h.n;
   const names = SEARCH.filter(e => all(e.key)).map(e => ({h: e.h})).sort(byN);
   const streets = SEARCH.filter(e => !all(e.key)).map(e => ({h: e.h, street: (e.streets.find(([, k]) => all(k)) || [])[0]}))
@@ -231,22 +235,18 @@ function searchHoods(q) {
 }
 
 function renderHoodList() {
-  const cur = hoodParams.get("hood"), res = searchHoods($("h-q").value), flat = flatOf(hoodParams);
+  const res = searchHoods($("h-q").value), f = hoodsFlat;
   $("h-empty").hidden = res.length > 0;
   $("h-list").innerHTML = res.map(({h, street}) => {
     const q = qClassOf(h.slug), ok = priced(h);
     const sub = !ok ? `کمتر از ${fa0.format(S.thresholds.priced)} آگهی؛ برآورد ممکن نیست`
-      : street ? `${street.startsWith("خیابان") ? "" : "خیابان "}${esc(street)}، ${fa0.format(h.n)} آگهی`
-      : `${fa0.format(h.n)} آگهی، واحد مرجع ${fmtB(h.ref_equiv)} میلیارد`;
-    return "<li>" + (ok ? `<a class="row" href="${esc(`/estimate/flat/?${query(h.slug, flat)}`)}"${h.slug === cur ? ' aria-current="true"' : ""}>` : '<span class="row" aria-disabled="true">')
+      : (street ? `${street.startsWith("خیابان") ? "" : "خیابان "}${esc(street)}، ` : "") + `${fa0.format(h.n)} آگهی`;
+    return "<li>" + (ok ? `<a class="row" href="${esc(`/estimate/result/?${query(h.slug, f)}`)}"${h.slug === hoodsCur ? ' aria-current="true"' : ""}>` : '<span class="row" aria-disabled="true">')
       + (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${sub}</span></span>`
-      + (low(h) ? badgeLow : "") + icon("i-chevron", "icon--fwd") + (ok ? "</a></li>" : "</span></li>");
+      + (low(h) ? badgeLow : "") + (ok ? `<span class="row__val">${fmtB(estimate({...f, hood: h.slug}).equiv)} میلیارد</span>` : "")
+      + icon("i-chevron", "icon--fwd") + (ok ? "</a></li>" : "</span></li>");
   }).join("");
-}
-
-function pickHood(slug) {
-  location.href = `/estimate/flat/?${query(slug, flatOf(hoodParams))}`;
 }
 
 const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
@@ -255,11 +255,22 @@ const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
   return 12742000 * Math.asin(Math.sqrt(h));
 };
 
-
-function initHoodStep() {
-  hoodParams = new URLSearchParams(location.search);
-  const pre = hoodBySlug[hoodParams.get("hood")];
+function initHoods() {
+  const params = new URLSearchParams(location.search), f = flatOf(params), pre = hoodBySlug[params.get("hood")];
+  if (!validArea(f.area_m2) || !validBuilt(f.year_built)) {
+    location.replace(`/estimate/flat/?${query(null, f)}&err=1`);
+    return;
+  }
   if (pre && !priced(pre)) toast(`برای ${pre.name} داده کافی نیست.`);
+  hoodsFlat = f;
+  hoodsCur = pre && priced(pre) ? pre.slug : null;
+  $("h-edit").href = document.querySelector("[data-back]").href = `/estimate/flat/?${query(null, f)}`;
+  $("h-summary").textContent = flatText(f);
+  $("h-banners").innerHTML = f.area_m2 < SZ0 || f.area_m2 > SZ1 ? `<p class="banner banner--info" role="note">${SIZE_HINT}</p>` : "";
+  const vals = S.hoods.filter(h => priced(h) && !h.low_data).map(h => estimate({...f, hood: h.slug}).equiv);  // the hoods the map draws
+  $("h-range").textContent = `رهن کامل این واحد در ${fa0.format(vals.length)} محلهٔ روی نقشه از ${fmtB(Math.min(...vals))} تا `
+    + `${fmtB(Math.max(...vals))} میلیارد تومان است؛ میانه ${fmtB(median(vals))} میلیارد.`;
+  labelMap("h-map-box", "h-legend", f, hoodsCur);
   renderHoodList();
   $("h-q").addEventListener("input", renderHoodList);
   if (!("geolocation" in navigator)) { $("h-locate").hidden = true; return; }
@@ -269,7 +280,7 @@ function initHoodStep() {
       let best = null, bd = Infinity;
       for (const h of S.hoods) { const d = distM(la, lo, h.lat, h.lon); if (d < bd) { bd = d; best = h; } }
       if (!best || bd > 3000) { toast("موقعیت شما بیرون از غرب تهران است."); return; }
-      if (priced(best)) { pickHood(best.slug); return; }
+      if (priced(best)) { location.href = `/estimate/result/?${query(best.slug, f)}`; return; }
       toast(`برای ${best.name} داده کافی نیست.`);
       $("h-q").value = best.name;
       renderHoodList();
@@ -277,7 +288,7 @@ function initHoodStep() {
   });
 }
 
-// ---- step 2: flat ------------------------------------------------------------------
+// ---- flat: the form; with ?hood= it opens that hood's result, without it every hood's price -------
 let flatHood = null, pendingErrors = false;
 const AREA_MSG = "متراژ را بین ۲۰ تا ۳۰۰ متر وارد کنید.";
 const BUILT_MSG = () => `سال ساخت را بین ۱۳۰۰ و ${toFa(S.year)} وارد کنید.`;
@@ -316,23 +327,20 @@ function setFloor(v) {
   f.dataset.v = v;
   f.textContent = v === 0 ? "همکف" : fa0.format(v);
 }
-function syncFlatUrl() {  // keep the typed flat in the URL so back / «تغییر محله» resume it
-  const f = readFlat();
-  if (!validArea(f.area_m2)) f.area_m2 = NaN;
-  if (!validBuilt(f.year_built)) f.year_built = NaN;
-  const q = query(flatHood, f);
+function syncFlatUrl() {  // keep the typed flat in the URL so reload / «تغییر محله» resume it; an empty field drops its key
+  const q = query(flatHood, readFlat());
   history.replaceState(null, "", `/estimate/flat/?${q}`);
   const a = $("f-context").querySelector("a");
   if (a) a.href = `/estimate/?${q}`;
-  document.querySelector("[data-back]").href = `/estimate/?${q}`;
 }
 
 function renderFlatStep(params) {
-  const h = hoodBySlug[params.get("hood")], f = flatOf(params);
-  flatHood = h.slug;
-  prefetch(h.slug);
-  $("f-context").innerHTML = `${esc(h.name)}${low(h) ? " " + badgeLow : ""}، ${fa0.format(h.n)} آگهی، واحد مرجع ${fmtM(h.ref_equiv)} میلیون `
-    + `<a href="/estimate/?${query(h.slug, f)}">تغییر محله</a>`;
+  const h = hoodBySlug[flatHood], f = flatOf(params);
+  if (h) prefetch(h.slug);
+  $("f-context").innerHTML = h ? `${esc(h.name)}${low(h) ? " " + badgeLow : ""}، ${fa0.format(h.n)} آگهی، واحد مرجع ${fmtM(h.ref_equiv)} میلیون `
+    + `<a href="/estimate/?${query(h.slug, f)}">تغییر محله</a>` : "در قدم بعد رهن کامل همین واحد را در هر محله روی نقشه می‌بینید.";
+  $("f-submit").textContent = h ? "دیدن برآورد" : "دیدن قیمت در محله‌ها";
+  document.querySelector("[data-back]").href = h ? `/#hood=${h.slug}` : "/";
   $("f-area").value = Number.isNaN(f.area_m2) ? "" : toFa(f.area_m2);
   $("f-built").value = Number.isNaN(f.year_built) ? "" : toFa(f.year_built);
   setFloor(f.floor);
@@ -345,12 +353,14 @@ function renderFlatStep(params) {
 }
 
 function initFlatStep() {
-  const params = new URLSearchParams(location.search);
-  if (!priceableHood(params)) return;
+  const params = new URLSearchParams(location.search), h = hoodBySlug[params.get("hood")];
+  if (h && !priced(h)) toast(`برای ${h.name} داده کافی نیست.`);
+  flatHood = h && priced(h) ? h.slug : null;
   pendingErrors = params.get("err") === "1";
   const form = $("f-form");
   for (const id of ["f-area", "f-built"]) {
     const el = $(id), check = id === "f-area" ? checkArea : checkBuilt, read = id === "f-area" ? readArea : readBuilt;
+    el.addEventListener("focus", () => setTimeout(() => el.select()));  // typing replaces the default value
     el.addEventListener("input", () => { check(false); syncFlatUrl(); });
     el.addEventListener("blur", () => {
       if (check(el.value.trim() !== "")) el.value = toFa(read());
@@ -367,7 +377,7 @@ function initFlatStep() {
     ev.preventDefault();
     const okA = checkArea(true), okB = checkBuilt(true);
     if (!okA || !okB) { $(okA ? "f-built" : "f-area").focus(); return; }
-    location.href = `/estimate/result/?${query(flatHood, readFlat())}`;
+    location.href = `/estimate/${flatHood ? "result/" : ""}?${query(flatHood, readFlat())}`;
   });
   renderFlatStep(params);
   syncFlatUrl();
@@ -385,12 +395,9 @@ function renderResult(params) {
   if (key !== R.key) Object.assign(R, {key, scope: "similar", sort: "close", shown: 20});
   Object.assign(R, {h, flat: f, est: estimate(f), ads: adsCache[h.slug] || null, err: false});
   const est = R.est;
-  const extras = [["parking", "پارکینگ"], ["elevator", "آسانسور"], ["renovated", "بازسازی‌شده"], ["complex", "مجتمع"]]
-    .filter(([k]) => f[k]).map(([, v]) => v);
-  $("r-summary").textContent = [h.name, `${fa0.format(f.area_m2)} متر`, `ساخت ${toFa(f.year_built)}`, floorText(f.floor)]
-    .concat(extras.length ? [extras.join("، ")] : []).join("، ");
+  $("r-summary").textContent = `${h.name}، ${flatText(f)}`;
   $("r-edit").href = `/estimate/flat/?${key}`;
-  document.querySelector("[data-back]").href = `/estimate/flat/?${key}`;
+  document.querySelector("[data-back]").href = `/estimate/?${key}`;
   $("r-banners").innerHTML = (low(h) ? `<p class="banner banner--warn" role="note">${esc(h.name)} فقط ${fa0.format(h.n)} آگهی دارد؛ عدد کم‌اطمینان‌تر و بازه پهن‌تر است.</p>` : "")
     + (f.area_m2 < SZ0 || f.area_m2 > SZ1 ? `<p class="banner banner--info" role="note">${SIZE_HINT}</p>` : "");
   $("r-equiv").textContent = fmtM(est.equiv);
@@ -405,7 +412,7 @@ function renderResult(params) {
   readOffer();
   renderBand();
   renderAds();
-  renderResultMap();
+  labelMap("r-map-box", "r-legend", f, h.slug);
   if (!R.ads) {
     const k = R.key;
     loadAds(h.slug).then(ads => { if (R.key === k) { R.ads = ads; renderBand(); renderAds(); } })
@@ -567,8 +574,10 @@ function mapIn(boxId) {  // this page's copy of the map in <template id="map-tpl
   const box = $(boxId);
   return box.querySelector("svg.map") || box.appendChild($("map-tpl").content.querySelector("svg.map").cloneNode(true));
 }
-function renderResultMap() {
-  const map = mapIn("r-map-box"), f = R.flat;
+// The template's map in boxId and its legend in legendId, labelled with flat f's full-deposit price in every hood; each
+// cell opens that hood's result. Colours stay the reference flat's classes: every hood's price scales by the same factor.
+function labelMap(boxId, legendId, f, mine) {
+  const map = mapIn(boxId);
   map.classList.remove("hint");
   for (const el of map.querySelectorAll(".sel, .mine")) el.classList.remove("sel", "mine");
   for (const c of map.querySelectorAll(".cell")) {
@@ -577,7 +586,7 @@ function renderResultMap() {
     c.setAttribute("aria-label", `${h.name}: ${fmtB(v)} میلیارد تومان برای واحد شما`);
     const val = map.querySelector(`.lbl[data-slug="${slug}"] .lbl-val`);
     if (val) val.textContent = fmtB(v);
-    if (slug === R.h.slug) {
+    if (slug === mine) {
       c.classList.add("mine");
       c.parentNode.appendChild(c);
       map.querySelector(`.lbl[data-slug="${slug}"]`)?.classList.add("mine");
@@ -586,8 +595,8 @@ function renderResultMap() {
   const lg = $("map-tpl").content.querySelector(".legend"), base = S.model.baseline;
   const k = Math.exp(predict({...f, hood: base}).mu - predict({...REF, hood: base}).mu) * f.area_m2 / REF.area_m2;
   const edges = lg.dataset.edges.split(",").map(Number);
-  $("r-legend").innerHTML = lg.outerHTML;
-  const nl = $("r-legend").querySelector(".legend");
+  $(legendId).innerHTML = lg.outerHTML;
+  const nl = $(legendId).querySelector(".legend");
   nl.querySelector(".legend__title").textContent = "رهن کامل همین واحد، میلیارد تومان";
   nl.querySelectorAll(".legend__ticks span").forEach((s, i) => { s.textContent = fmtB(edges[i] * k); });
 }
@@ -729,7 +738,7 @@ function initInstall() {
 
 
 function init() {
-  ({"explore": initExplore, "hood-step": initHoodStep, "flat-step": initFlatStep, "result": initResult, "budget": initBudget})[document.body.dataset.page]();
+  ({"explore": initExplore, "hoods": initHoods, "flat-step": initFlatStep, "result": initResult, "budget": initBudget})[document.body.dataset.page]();
   document.addEventListener("toggle", ev => {  // toggle does not bubble; capture sees it
     if (ev.target instanceof HTMLDetailsElement && ev.target.open && ev.target.id) track("trackEvent", "section", "open", ev.target.id);
   }, true);

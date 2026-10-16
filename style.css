@@ -20,7 +20,6 @@ h1:focus,h2:focus{outline:0}
 .icon--fwd{transform:rotate(90deg)}
 .appbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:var(--sp-2);height:56px;background:var(--bg);border-bottom:1px solid var(--border);margin:0 calc(-1*var(--sp-4));padding:0 var(--sp-4)}
 .appbar__title{flex:1;font-weight:700;font-size:var(--fs-md)}
-.appbar__step{font-size:var(--fs-sm);color:var(--muted)}
 .btn,.iconbtn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--tap);padding:0 var(--sp-4);border:1.5px solid transparent;border-radius:var(--r-md);font:600 var(--fs-md) var(--font);color:var(--fg);background:none;text-decoration:none;cursor:pointer;transition:filter var(--dur-1)}
 .btn:active,.iconbtn:active{filter:brightness(.92)}
 .btn[disabled]{opacity:.4;cursor:default}

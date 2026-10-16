@@ -22,7 +22,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://rent.nlogn.ir/">
 
-<link rel="stylesheet" href="/style.css?v=8e6fcfd6">
+<link rel="stylesheet" href="/style.css?v=9e32c113">
 <script>
 if (location.hostname === "rent.nlogn.ir") {
   var _paq = window._paq = window._paq || [];
@@ -36,12 +36,12 @@ if (location.hostname === "rent.nlogn.ir") {
   });
 }
 </script>
-<script src="/app.js?v=7cb4d02a" defer></script>
+<script src="/app.js?v=f399b76b" defer></script>
 <script>
 (function () {  // links shared before the multi-page site → their pages; #hood=<slug> stays (sheet)
   var h = decodeURIComponent(location.hash.slice(1)), m;
   if (h === "method") location.replace("/method/");
-  else if (h === "calc") location.replace("/estimate/");
+  else if (h === "calc") location.replace("/estimate/flat/");
   else if ((m = h.match(/^estimate\/(hood|flat|result)(\?.*)?$/))) location.replace("/estimate/" + (m[1] === "hood" ? "" : m[1] + "/") + (m[2] || ""));
   else if ((m = h.match(/^budget(\?.*)?$/))) location.replace("/budget/" + (m[1] || ""));
 })();
@@ -67,7 +67,7 @@ if (location.hostname === "rent.nlogn.ir") {
   <section class="hero">
     <h1>اجارهٔ آپارتمان در غرب تهران چند است؟</h1>
     <p class="muted">رهن کامل یک واحد ۷۵ متری ۱۵ ساله (طبقهٔ ۳، با پارکینگ و آسانسور) در هر محله؛ از ۸٬۹۲۶ آگهی دیوار.</p>
-    <a class="btn btn--primary btn--block" href="/estimate/">وارد کردن مشخصات واحد</a>
+    <a class="btn btn--primary btn--block" href="/estimate/flat/">وارد کردن مشخصات واحد</a>
     <a class="btn btn--secondary btn--block" id="x-pick" href="#x-map">انتخاب محله روی نقشه</a>
     <a class="btn btn--text btn--block" href="/budget/">با بودجهٔ من کجا و چند متر؟</a>
   </section>
