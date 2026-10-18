@@ -49,9 +49,10 @@ h1:focus,h2:focus{outline:0}
 .chips legend{font-weight:600;padding:0;margin-bottom:var(--sp-2)}
 .chip{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:44px;padding:0 var(--sp-4);border:1.5px solid transparent;border-radius:var(--r-pill);background:var(--surface-2);color:var(--fg);font:400 var(--fs-sm) var(--font);text-decoration:none;cursor:pointer}
 .chip .icon{display:none;width:18px;height:18px}
-.chip[aria-pressed=true],.chip[aria-checked=true]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
+.chip[aria-pressed=true],.chip[aria-checked=true],.chip[aria-current=page]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
 .chip[aria-pressed=true] .icon{display:block}
 .chip--static{min-height:0;padding:0 var(--sp-3);cursor:default;font-size:var(--fs-xs);background:var(--surface);color:var(--muted)}
+.zone-tabs{margin:var(--sp-3) 0}
 .search{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--tap);border:1px solid var(--border);border-radius:var(--r-md);padding:0 var(--sp-3);margin:var(--sp-2) 0}
 .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .search input{flex:1;min-height:calc(var(--tap) - 2px);outline:0}

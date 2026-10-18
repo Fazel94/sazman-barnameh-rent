@@ -1,8 +1,9 @@
 "use strict";
 // One script for every page: <body data-page> picks the init (explore, hoods, flat-step, result, budget);
-// data is the inline #snapshot; per-hood ads load from /data/ads/<slug>.json on demand. Mirrors estimate.py's model.
+// data is the inline #snapshot; per-hood ads load from <zone path>data/ads/<slug>.json on demand. Mirrors estimate.py's model.
 
 const S = JSON.parse(document.getElementById("snapshot").textContent);
+const BASE = S.zone.path;  // "/", "/east/", "/karaj/": every link but /hood/<slug>/ lives under it
 
 const fa0 = new Intl.NumberFormat("fa-IR", {maximumFractionDigits: 0});
 const fa1 = new Intl.NumberFormat("fa-IR", {minimumFractionDigits: 1, maximumFractionDigits: 1});
@@ -94,7 +95,7 @@ function loadAds(slug) {  // caches resolved files only, so a failed fetch can b
   if (adsCache[slug]) return Promise.resolve(adsCache[slug]);
   if (!hoodBySlug[slug].n) return Promise.resolve(adsCache[slug] = []);
   if (adsPending[slug]) return adsPending[slug];
-  return adsPending[slug] = fetch(`/data/ads/${slug}.json`).then(r => {
+  return adsPending[slug] = fetch(`${BASE}data/ads/${slug}.json`).then(r => {
     if (!r.ok) throw new Error(r.status);
     return r.json();
   }).then(ads => (adsCache[slug] = ads)).finally(() => { delete adsPending[slug]; });
@@ -133,7 +134,7 @@ const validBuilt = y => Number.isInteger(y) && y >= 1300 && y <= S.year;
 function priceableHood(params) {
   const h = hoodBySlug[params.get("hood")];
   if (h && priced(h)) return h;
-  location.replace(`/estimate/?${query(h ? h.slug : null, flatOf(params))}`);
+  location.replace(`${BASE}estimate/?${query(h ? h.slug : null, flatOf(params))}`);
   return null;
 }
 
@@ -205,7 +206,7 @@ function renderSheet(focus) {
       + `<p class="price price--sheet"><span class="price__value">${fmtM(h.ref_equiv)} <span class="price__unit">میلیون تومان رهن کامل</span></span></p>`
       + `<p class="price__sub">۹۵٪ آگهی‌های چنین واحدی: ${fmtM(h.band_one[0])} تا ${fmtM(h.band_one[1])}</p>`
       + `<dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` + near
-      + `<a class="btn btn--primary btn--block" href="/estimate/flat/?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`
+      + `<a class="btn btn--primary btn--block" href="${BASE}estimate/flat/?hood=${h.slug}">برآورد واحد من در ${esc(h.name)}</a>`
       + `<a class="btn btn--text btn--block" href="/hood/${h.slug}/">صفحهٔ ${esc(h.name)}</a>`;
   }
   $("x-sheet-body").innerHTML = body;
@@ -241,7 +242,7 @@ function renderHoodList() {
     const q = qClassOf(h.slug), ok = priced(h);
     const sub = !ok ? `کمتر از ${fa0.format(S.thresholds.priced)} آگهی؛ برآورد ممکن نیست`
       : (street ? `${street.startsWith("خیابان") ? "" : "خیابان "}${esc(street)}، ` : "") + `${fa0.format(h.n)} آگهی`;
-    return "<li>" + (ok ? `<a class="row" href="${esc(`/estimate/result/?${query(h.slug, f)}`)}"${h.slug === hoodsCur ? ' aria-current="true"' : ""}>` : '<span class="row" aria-disabled="true">')
+    return "<li>" + (ok ? `<a class="row" href="${esc(`${BASE}estimate/result/?${query(h.slug, f)}`)}"${h.slug === hoodsCur ? ' aria-current="true"' : ""}>` : '<span class="row" aria-disabled="true">')
       + (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${sub}</span></span>`
       + (low(h) ? badgeLow : "") + (ok ? `<span class="row__val">${fmtB(estimate({...f, hood: h.slug}).equiv)} میلیارد</span>` : "")
@@ -255,16 +256,18 @@ const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
   return 12742000 * Math.asin(Math.sqrt(h));
 };
 
+const zoneTabs = q => { for (const a of document.querySelectorAll(".zone-tabs a")) a.search = q; };  // tabs carry the typed inputs
 function initHoods() {
   const params = new URLSearchParams(location.search), f = flatOf(params), pre = hoodBySlug[params.get("hood")];
   if (!validArea(f.area_m2) || !validBuilt(f.year_built)) {
-    location.replace(`/estimate/flat/?${query(null, f)}&err=1`);
+    location.replace(`${BASE}estimate/flat/?${query(null, f)}&err=1`);
     return;
   }
   if (pre && !priced(pre)) toast(`برای ${pre.name} داده کافی نیست.`);
   hoodsFlat = f;
+  zoneTabs(query(null, f));
   hoodsCur = pre && priced(pre) ? pre.slug : null;
-  $("h-edit").href = document.querySelector("[data-back]").href = `/estimate/flat/?${query(null, f)}`;
+  $("h-edit").href = document.querySelector("[data-back]").href = `${BASE}estimate/flat/?${query(null, f)}`;
   $("h-summary").textContent = flatText(f);
   $("h-banners").innerHTML = f.area_m2 < SZ0 || f.area_m2 > SZ1 ? `<p class="banner banner--info" role="note">${SIZE_HINT}</p>` : "";
   const vals = S.hoods.filter(h => priced(h) && !h.low_data).map(h => estimate({...f, hood: h.slug}).equiv);  // the hoods the map draws
@@ -274,18 +277,29 @@ function initHoods() {
   renderHoodList();
   $("h-q").addEventListener("input", renderHoodList);
   if (!("geolocation" in navigator)) { $("h-locate").hidden = true; return; }
-  $("h-locate").addEventListener("click", () => {
-    navigator.geolocation.getCurrentPosition(pos => {
-      const {latitude: la, longitude: lo} = pos.coords;
-      let best = null, bd = Infinity;
-      for (const h of S.hoods) { const d = distM(la, lo, h.lat, h.lon); if (d < bd) { bd = d; best = h; } }
-      if (!best || bd > 3000) { toast("موقعیت شما بیرون از غرب تهران است."); return; }
-      if (priced(best)) { location.href = `/estimate/result/?${query(best.slug, f)}`; return; }
-      toast(`برای ${best.name} داده کافی نیست.`);
-      $("h-q").value = best.name;
-      renderHoodList();
-    }, () => toast("موقعیت در دسترس نیست."), {enableHighAccuracy: false, timeout: 10000, maximumAge: 600000});
-  });
+  $("h-locate").addEventListener("click", () => locate(hoodsFlat));
+  if (params.get("locate") === "1") {  // arrived from another region's button: drop the flag, then locate here
+    history.replaceState(null, "", `${location.pathname}?${query(hoodsCur, f)}`);
+    locate(f, true);
+  }
+}
+
+function locate(f, hopped) {  // nearest hood of this region, else the region whose frame holds the user (one hop only)
+  navigator.geolocation.getCurrentPosition(pos => {
+    const {latitude: la, longitude: lo} = pos.coords;
+    let best = null, bd = Infinity;
+    for (const h of S.hoods) { const d = distM(la, lo, h.lat, h.lon); if (d < bd) { bd = d; best = h; } }
+    if (!best || bd > 3000) {
+      const z = !hopped && S.zones.find(z => z.id !== S.zone.id && lo >= z.bbox[0] && la >= z.bbox[1] && lo <= z.bbox[2] && la <= z.bbox[3]);
+      if (z) { location.href = `${z.path}estimate/?${query(null, f)}&locate=1`; return; }
+      toast(`موقعیت شما بیرون از ${S.zones.map(z => z.name).join("، ")} است.`);
+      return;
+    }
+    if (priced(best)) { location.href = `${BASE}estimate/result/?${query(best.slug, f)}`; return; }
+    toast(`برای ${best.name} داده کافی نیست.`);
+    $("h-q").value = best.name;
+    renderHoodList();
+  }, () => toast("موقعیت در دسترس نیست."), {enableHighAccuracy: false, timeout: 10000, maximumAge: 600000});
 }
 
 // ---- flat: the form; with ?hood= it opens that hood's result, without it every hood's price -------
@@ -329,18 +343,18 @@ function setFloor(v) {
 }
 function syncFlatUrl() {  // keep the typed flat in the URL so reload / «تغییر محله» resume it; an empty field drops its key
   const q = query(flatHood, readFlat());
-  history.replaceState(null, "", `/estimate/flat/?${q}`);
+  history.replaceState(null, "", `${BASE}estimate/flat/?${q}`);
   const a = $("f-context").querySelector("a");
-  if (a) a.href = `/estimate/?${q}`;
+  if (a) a.href = `${BASE}estimate/?${q}`;
 }
 
 function renderFlatStep(params) {
   const h = hoodBySlug[flatHood], f = flatOf(params);
   if (h) prefetch(h.slug);
   $("f-context").innerHTML = h ? `${esc(h.name)}${low(h) ? " " + badgeLow : ""}، ${fa0.format(h.n)} آگهی، واحد مرجع ${fmtM(h.ref_equiv)} میلیون `
-    + `<a href="/estimate/?${query(h.slug, f)}">تغییر محله</a>` : "در قدم بعد رهن کامل همین واحد را در هر محله روی نقشه می‌بینید.";
+    + `<a href="${BASE}estimate/?${query(h.slug, f)}">تغییر محله</a>` : "در قدم بعد رهن کامل همین واحد را در هر محله روی نقشه می‌بینید.";
   $("f-submit").textContent = h ? "دیدن برآورد" : "دیدن قیمت در محله‌ها";
-  document.querySelector("[data-back]").href = h ? `/#hood=${h.slug}` : "/";
+  document.querySelector("[data-back]").href = h ? `${BASE}#hood=${h.slug}` : BASE;
   $("f-area").value = Number.isNaN(f.area_m2) ? "" : toFa(f.area_m2);
   $("f-built").value = Number.isNaN(f.year_built) ? "" : toFa(f.year_built);
   setFloor(f.floor);
@@ -377,7 +391,7 @@ function initFlatStep() {
     ev.preventDefault();
     const okA = checkArea(true), okB = checkBuilt(true);
     if (!okA || !okB) { $(okA ? "f-built" : "f-area").focus(); return; }
-    location.href = `/estimate/${flatHood ? "result/" : ""}?${query(flatHood, readFlat())}`;
+    location.href = `${BASE}estimate/${flatHood ? "result/" : ""}?${query(flatHood, readFlat())}`;
   });
   renderFlatStep(params);
   syncFlatUrl();
@@ -396,8 +410,8 @@ function renderResult(params) {
   Object.assign(R, {h, flat: f, est: estimate(f), ads: adsCache[h.slug] || null, err: false});
   const est = R.est;
   $("r-summary").textContent = `${h.name}، ${flatText(f)}`;
-  $("r-edit").href = `/estimate/flat/?${key}`;
-  document.querySelector("[data-back]").href = `/estimate/?${key}`;
+  $("r-edit").href = `${BASE}estimate/flat/?${key}`;
+  document.querySelector("[data-back]").href = `${BASE}estimate/?${key}`;
   $("r-banners").innerHTML = (low(h) ? `<p class="banner banner--warn" role="note">${esc(h.name)} فقط ${fa0.format(h.n)} آگهی دارد؛ عدد کم‌اطمینان‌تر و بازه پهن‌تر است.</p>` : "")
     + (f.area_m2 < SZ0 || f.area_m2 > SZ1 ? `<p class="banner banner--info" role="note">${SIZE_HINT}</p>` : "");
   $("r-equiv").textContent = fmtM(est.equiv);
@@ -408,7 +422,7 @@ function renderResult(params) {
   $("r-rate").value = String(S.rate);
   renderSplit();
   renderWhy();
-  $("r-basis").textContent = `بر پایهٔ ${fa0.format(h.n)} آگهی ${h.name} و مدلی از ${fa0.format(S.counts.peers)} آگهی غرب تهران، برداشت ${toFa(S.jalali)}`;
+  $("r-basis").textContent = `بر پایهٔ ${fa0.format(h.n)} آگهی ${h.name} و مدلی از ${fa0.format(S.counts.peers)} آگهی ${S.zone.name}، برداشت ${toFa(S.jalali)}`;
   readOffer();
   renderBand();
   renderAds();
@@ -582,7 +596,7 @@ function labelMap(boxId, legendId, f, mine) {
   for (const el of map.querySelectorAll(".sel, .mine")) el.classList.remove("sel", "mine");
   for (const c of map.querySelectorAll(".cell")) {
     const slug = c.dataset.slug, h = hoodBySlug[slug], v = estimate({...f, hood: slug}).equiv;
-    c.setAttribute("href", `/estimate/result/?${query(slug, f)}`);
+    c.setAttribute("href", `${BASE}estimate/result/?${query(slug, f)}`);
     c.setAttribute("aria-label", `${h.name}: ${fmtB(v)} میلیارد تومان برای واحد شما`);
     const val = map.querySelector(`.lbl[data-slug="${slug}"] .lbl-val`);
     if (val) val.textContent = fmtB(v);
@@ -606,7 +620,7 @@ function initResult() {
   if (!priceableHood(params)) return;
   const flat = flatOf(params);
   if (!validArea(flat.area_m2) || !validBuilt(flat.year_built)) {
-    location.replace(`/estimate/flat/?${query(params.get("hood"), flat)}&err=1`);
+    location.replace(`${BASE}estimate/flat/?${query(params.get("hood"), flat)}&err=1`);
     return;
   }
   $("r-ads-key").textContent = `برچسب‌ها: فاصلهٔ قیمت آگهی از برآورد مدل برای همان مشخصات در همان محله. «خیلی» یعنی دست‌کم ${fa0.format(-CUT_LO)}٪ ارزان‌تر یا ${fa0.format(CUT_HI)}٪ گران‌تر.`;
@@ -666,10 +680,11 @@ function renderBudget(params) {
 }
 function syncBudget() {  // inputs live in the URL (shareable), no new history entry, no re-render
   const b = readBudget();
-  history.replaceState(null, "", `/budget/?${budgetQuery(b)}`);
+  history.replaceState(null, "", `${BASE}budget/?${budgetQuery(b)}`);
   renderBudgetOut(b);
 }
 function renderBudgetOut(b) {
+  zoneTabs(budgetQuery(b));
   const out = $("b-out"), sum = $("b-summary"), B = nz(b.dep) + nz(b.rent) / b.rate;
   if (!(B > 0)) { out.hidden = true; sum.textContent = "ودیعه یا اجارهٔ ماهانه را وارد کنید."; return; }
   if (!(1 + BS > 0.05)) { out.hidden = true; sum.textContent = "محاسبهٔ بودجه با مدل این هفته ممکن نیست."; return; }
@@ -679,7 +694,7 @@ function renderBudgetOut(b) {
   sum.textContent = `بودجهٔ شما برابر ${fmtM(B)} میلیون تومان رهن کامل است (اجارهٔ ماهانه با نرخ ${faM1.format(b.rate * 100)}٪ تبدیل شده). `
     + `متراژ یک واحد ${fa0.format(S.year - b.year_built)} ساله، ${floorText(RF.floor)}، ${b.parking ? "با" : "بدون"} پارکینگ و ${b.elevator ? "با" : "بدون"} آسانسور در هر محله:`
     + (rows.some(({a}) => a < SZ0 || a > SZ1) ? ` مدل با آگهی‌های ${fa0.format(SZ0)} تا ${fa0.format(SZ1)} متری ساخته شده؛ بیرون از این بازه دقت کمتر است.` : "");
-  const href = (h, a) => a >= 20 && a <= 300 ? `/estimate/result/?${query(h.slug, {...f, area_m2: a})}` : null;
+  const href = (h, a) => a >= 20 && a <= 300 ? `${BASE}estimate/result/?${query(h.slug, {...f, area_m2: a})}` : null;
   $("b-list").innerHTML = rows.map(({h, a}) => {
     const to = href(h, a), q = qClassOf(h.slug), inner = (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${fa0.format(h.n)} آگهی</span></span>`
