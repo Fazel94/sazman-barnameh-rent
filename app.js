@@ -235,8 +235,42 @@ function searchHoods(q) {
   return names.concat(streets);
 }
 
+// ---- zone parts (config [[zone.part]]): chips that zoom every map to one part and filter the lists -----------------
+let PART = "", onPart = null;  // onPart: the page's list re-render
+const inPart = h => !PART || h.part === PART;
+function partMap(map) {
+  const full = map.dataset.full || (map.dataset.full = map.getAttribute("viewBox"));
+  const p = S.parts.find(p => p.id === PART), z = p ? Number(full.split(" ")[2]) / p.box[2] : 1;
+  map.setAttribute("viewBox", p ? p.box.join(" ") : full);
+  map.style.setProperty("--z", z);  // labels keep their on-screen size (style.css divides by --z)
+  for (const c of map.querySelectorAll(".cell")) c.classList.toggle("out", !!PART && hoodBySlug[c.dataset.slug]?.part !== PART);
+  for (const g of map.querySelectorAll(".lbls")) g.style.display = (g.dataset.part || "") === (p ? PART : "") ? "" : "none";  // each part has labels placed for its zoom
+  for (const n of map.parentNode.querySelectorAll(".zptrs")) n.hidden = n.dataset.view !== (p ? PART : "");  // the view's neighbour rows
+}
+function initParts() {
+  const box = document.querySelector(".part-chips");
+  if (!box) return;
+  const set = id => {
+    PART = S.parts.some(p => p.id === id) ? id : "";
+    for (const c of box.querySelectorAll(".chip")) c.setAttribute("aria-pressed", String(c.dataset.part === PART));
+    for (const m of document.querySelectorAll("svg.map")) partMap(m);
+  };
+  document.addEventListener("click", ev => {  // the chips, and the map's pointers to a neighbouring part
+    const c = ev.target.closest(".part-chips .chip, button.zptr[data-part]");
+    if (!c) return;
+    set(c.dataset.part);
+    const u = new URL(location.href);
+    if (PART) u.searchParams.set("part", PART); else u.searchParams.delete("part");
+    history.replaceState(history.state, "", u);
+    track("trackEvent", "part", c.classList.contains("zptr") ? "pointer" : "pick", PART || "all");
+    onPart?.();
+  });
+  set(new URLSearchParams(location.search).get("part") || "");
+}
+
 function renderHoodList() {
-  const res = searchHoods($("h-q").value), f = hoodsFlat;
+  const typed = $("h-q").value.trim(), f = hoodsFlat;
+  const res = searchHoods(typed).filter(({h}) => typed || inPart(h));  // a typed name searches the whole zone
   $("h-empty").hidden = res.length > 0;
   $("h-list").innerHTML = res.map(({h, street}) => {
     const q = qClassOf(h.slug), ok = priced(h);
@@ -264,6 +298,7 @@ function zoneTabs(q) {  // region tabs and the map's region pointers carry the t
 }
 function initHoods() {
   const params = new URLSearchParams(location.search), f = flatOf(params), pre = hoodBySlug[params.get("hood")];
+  onPart = renderHoodList;
   if (!validArea(f.area_m2) || !validBuilt(f.year_built)) {
     location.replace(`${BASE}estimate/flat/?${query(null, f)}&err=1`);
     return;
@@ -597,6 +632,7 @@ function mapIn(boxId) {  // this page's copy of the map (with its region pointer
   if (have) return have;
   box.appendChild($("map-tpl").content.querySelector(".mapbox").cloneNode(true));
   zoneTabs(zoneQ);  // the copy's region pointers
+  partMap(box.querySelector("svg.map"));
   return box.querySelector("svg.map");
 }
 // The template's map in boxId and its legend in legendId, labelled with flat f's full-deposit price in every hood; each
@@ -609,12 +645,11 @@ function labelMap(boxId, legendId, f, mine) {
     const slug = c.dataset.slug, h = hoodBySlug[slug], v = estimate({...f, hood: slug}).equiv;
     c.setAttribute("href", `${BASE}estimate/result/?${query(slug, f)}`);
     c.setAttribute("aria-label", `${h.name}: ${fmtB(v)} میلیارد تومان برای واحد شما`);
-    const val = map.querySelector(`.lbl[data-slug="${slug}"] .lbl-val`);
-    if (val) val.textContent = fmtB(v);
+    for (const val of map.querySelectorAll(`.lbl[data-slug="${slug}"] .lbl-val`)) val.textContent = fmtB(v);
     if (slug === mine) {
       c.classList.add("mine");
       c.parentNode.appendChild(c);
-      map.querySelector(`.lbl[data-slug="${slug}"]`)?.classList.add("mine");
+      for (const l of map.querySelectorAll(`.lbl[data-slug="${slug}"]`)) l.classList.add("mine");
     }
   }
   const lg = $("map-tpl").content.querySelector(".legend"), base = S.model.baseline;
@@ -692,7 +727,7 @@ function renderBudget(params) {
 }
 function syncBudget() {  // inputs live in the URL (shareable), no new history entry, no re-render
   const b = readBudget();
-  history.replaceState(null, "", `${BASE}budget/?${budgetQuery(b)}`);
+  history.replaceState(null, "", `${BASE}budget/?${budgetQuery(b)}${PART ? `&part=${PART}` : ""}`);
   renderBudgetOut(b);
 }
 function renderBudgetOut(b) {
@@ -707,7 +742,7 @@ function renderBudgetOut(b) {
     + `متراژ یک واحد ${fa0.format(S.year - b.year_built)} ساله، ${floorText(RF.floor)}، ${b.parking ? "با" : "بدون"} پارکینگ و ${b.elevator ? "با" : "بدون"} آسانسور در هر محله:`
     + (rows.some(({a}) => a < SZ0 || a > SZ1) ? ` مدل با آگهی‌های ${fa0.format(SZ0)} تا ${fa0.format(SZ1)} متری ساخته شده؛ بیرون از این بازه دقت کمتر است.` : "");
   const href = (h, a) => a >= 20 && a <= 300 ? `${BASE}estimate/result/?${query(h.slug, {...f, area_m2: a})}` : null;
-  $("b-list").innerHTML = rows.map(({h, a}) => {
+  $("b-list").innerHTML = rows.filter(({h}) => inPart(h)).map(({h, a}) => {
     const to = href(h, a), q = qClassOf(h.slug), inner = (q ? `<span class="row__swatch ${q}"></span>` : "")
       + `<span class="row__main"><span class="row__title">${esc(h.name)}</span><span class="row__sub">${fa0.format(h.n)} آگهی</span></span>`
       + (low(h) ? badgeLow : "") + `<span class="row__val">${val(a)}</span>` + (to ? icon("i-chevron", "icon--fwd") : "");
@@ -720,8 +755,8 @@ function renderBudgetOut(b) {
     const {h, a} = by[c.dataset.slug], to = href(h, a);
     if (to) c.setAttribute("href", to); else c.removeAttribute("href");
     c.setAttribute("aria-label", `${h.name}: ${val(a)} با این بودجه`);
-    const lv = map.querySelector(`.lbl[data-slug="${h.slug}"] .lbl-val`);
-    if (lv) lv.textContent = a < 20 ? "<۲۰" : a > 300 ? ">۳۰۰" : fa0.format(a);
+    const txt = a < 20 ? "<۲۰" : a > 300 ? ">۳۰۰" : fa0.format(a);
+    for (const lv of map.querySelectorAll(`.lbl[data-slug="${h.slug}"] .lbl-val`)) lv.textContent = txt;
   }
   const lg = $("map-tpl").content.querySelector(".legend"), base = S.model.baseline;
   const delta = predict({...f, hood: base}).mu - predict({...REF, area_m2: A0, hood: base}).mu;
@@ -735,6 +770,7 @@ function renderBudgetOut(b) {
   out.hidden = false;
 }
 function initBudget() {
+  onPart = () => renderBudgetOut(readBudget());
   $("b-built").placeholder = `مثلاً ${toFa(REF.year_built)}`;
   const form = $("b-form");
   form.addEventListener("input", syncBudget);
@@ -775,6 +811,7 @@ function initInstall() {
 
 
 function init() {
+  initParts();
   ({"explore": initExplore, "hoods": initHoods, "flat-step": initFlatStep, "result": initResult, "budget": initBudget})[document.body.dataset.page]();
   document.addEventListener("toggle", ev => {  // toggle does not bubble; capture sees it
     if (ev.target instanceof HTMLDetailsElement && ev.target.open && ev.target.id) track("trackEvent", "section", "open", ev.target.id);
