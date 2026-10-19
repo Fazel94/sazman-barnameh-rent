@@ -256,7 +256,12 @@ const distM = (lat1, lon1, lat2, lon2) => {  // port of divar.dist_m
   return 12742000 * Math.asin(Math.sqrt(h));
 };
 
-const zoneTabs = q => { for (const a of document.querySelectorAll(".zone-tabs a")) a.search = q; };  // tabs carry the typed inputs
+let zoneQ = "";
+function zoneTabs(q) {  // region tabs and the map's region pointers carry the typed inputs
+  zoneQ = q;
+  for (const a of document.querySelectorAll(".zone-tabs a")) a.search = q;
+  for (const a of document.querySelectorAll("a.zptr")) a.setAttribute("href", a.getAttribute("data-base") + (q ? `?${q}` : ""));
+}
 function initHoods() {
   const params = new URLSearchParams(location.search), f = flatOf(params), pre = hoodBySlug[params.get("hood")];
   if (!validArea(f.area_m2) || !validBuilt(f.year_built)) {
@@ -587,9 +592,12 @@ function renderAds() {
   more.hidden = ads.length <= R.shown;
 }
 
-function mapIn(boxId) {  // this page's copy of the map in <template id="map-tpl">, created on first use
-  const box = $(boxId);
-  return box.querySelector("svg.map") || box.appendChild($("map-tpl").content.querySelector("svg.map").cloneNode(true));
+function mapIn(boxId) {  // this page's copy of the map (with its region pointers) in <template id="map-tpl">, created on first use
+  const box = $(boxId), have = box.querySelector("svg.map");
+  if (have) return have;
+  box.appendChild($("map-tpl").content.querySelector(".mapbox").cloneNode(true));
+  zoneTabs(zoneQ);  // the copy's region pointers
+  return box.querySelector("svg.map");
 }
 // The template's map in boxId and its legend in legendId, labelled with flat f's full-deposit price in every hood; each
 // cell opens that hood's result. Colours stay the reference flat's classes: every hood's price scales by the same factor.
@@ -650,6 +658,7 @@ function initResult() {
     loadAds(slug).then(ads => { if (R.key === k) { R.ads = ads; renderBand(); renderAds(); } })
       .catch(() => { if (R.key === k) { R.err = true; renderBand(); renderAds(); } });
   });
+  zoneTabs(query(null, flat));  // the map's region pointers open that region's hood list for this flat
   renderResult(params);
 }
 

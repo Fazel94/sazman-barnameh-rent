@@ -173,6 +173,10 @@ select{border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp
 .lbl{font-size:11px;font-weight:700;text-anchor:middle;fill:var(--fg);stroke:var(--land);stroke-width:2.5px;stroke-linejoin:round;paint-order:stroke;pointer-events:none}
 .lbl-name{font-size:9px;font-weight:500}
 .lbl--sm{font-size:8px;stroke-width:2px}
+.zptrs{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm);font-weight:700;direction:ltr}
+.zptrs>span{display:flex;flex:1;gap:var(--sp-3)}
+.zptrs__c{justify-content:center}.zptrs__r{justify-content:flex-end}
+.zptr{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:32px;color:var(--accent);text-decoration:none;white-space:nowrap}
 .map .low{display:none}
 .map .low.mine{display:inline}
 .map.hint .cell path{animation:glow 1.6s ease-in-out}
