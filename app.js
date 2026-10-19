@@ -277,21 +277,24 @@ function initHoods() {
   renderHoodList();
   $("h-q").addEventListener("input", renderHoodList);
   if (!("geolocation" in navigator)) { $("h-locate").hidden = true; return; }
-  $("h-locate").addEventListener("click", () => locate(hoodsFlat));
-  if (params.get("locate") === "1") {  // arrived from another region's button: drop the flag, then locate here
+  $("h-locate").addEventListener("click", () => locate(hoodsFlat, [S.zone.id]));
+  const tried = (params.get("locate") || "").split(",").filter(Boolean);
+  if (tried.length) {  // arrived from another region's button (locate=<regions tried>): drop the flag, then locate here
     history.replaceState(null, "", `${location.pathname}?${query(hoodsCur, f)}`);
-    locate(f, true);
+    locate(f, tried);
   }
 }
 
-function locate(f, hopped) {  // nearest hood of this region, else the region whose frame holds the user (one hop only)
+function locate(f, tried) {  // nearest hood of this region, else a region whose frame holds the user (never one already tried)
   navigator.geolocation.getCurrentPosition(pos => {
     const {latitude: la, longitude: lo} = pos.coords;
     let best = null, bd = Infinity;
     for (const h of S.hoods) { const d = distM(la, lo, h.lat, h.lon); if (d < bd) { bd = d; best = h; } }
     if (!best || bd > 3000) {
-      const z = !hopped && S.zones.find(z => z.id !== S.zone.id && lo >= z.bbox[0] && la >= z.bbox[1] && lo <= z.bbox[2] && la <= z.bbox[3]);
-      if (z) { location.href = `${z.path}estimate/?${query(null, f)}&locate=1`; return; }
+      const inside = z => !tried.includes(z.id) && lo >= z.bbox[0] && la >= z.bbox[1] && lo <= z.bbox[2] && la <= z.bbox[3];
+      const mid = z => (((z.bbox[0] + z.bbox[2]) / 2 - lo) * 0.81) ** 2 + ((z.bbox[1] + z.bbox[3]) / 2 - la) ** 2;  // 0.81 ≈ cos(lat)
+      const z = S.zones.filter(inside).sort((a, b) => mid(a) - mid(b))[0];  // frames overlap: nearest centre first
+      if (z) { location.href = `${z.path}estimate/?${query(null, f)}&locate=${[...tried, z.id].join(",")}`; return; }
       toast(`موقعیت شما بیرون از ${S.zones.map(z => z.name).join("، ")} است.`);
       return;
     }
@@ -737,17 +740,27 @@ function initBudget() {
   renderBudget(new URLSearchParams(location.search));
 }
 
-let installEv = null;  // Android/Chrome only; iOS installs from the share menu
+let installEv = null;  // set where the browser offers a one-tap install (Chrome on Android); elsewhere the button shows steps
+function installHelp() {
+  const ua = navigator.userAgent;
+  if (/; wv\)|FBAN|FBAV|Instagram|Telegram|Eitaa|Line\//.test(ua)) return "این صفحه داخل برنامهٔ دیگری باز شده و نصب در آن ممکن نیست. از منوی ⋮ گزینهٔ «باز کردن در مرورگر» را بزنید و دوباره امتحان کنید.";
+  if (/iPad|iPhone|iPod/.test(ua)) return "دکمهٔ اشتراک‌گذاری مرورگر را بزنید و «افزودن به صفحهٔ اصلی» را انتخاب کنید.";
+  return "از منوی مرورگر (⋮) گزینهٔ «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را بزنید. اگر نبود، مرورگرتان نصب را پشتیبانی نمی‌کند؛ Chrome را به‌روز کنید.";
+}
 function initInstall() {
-  addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installEv = ev; $("x-install").hidden = false; });
-  addEventListener("appinstalled", () => { installEv = null; $("x-install").hidden = true; });
-  $("x-install").addEventListener("click", () => {
+  const btn = $("x-install"), help = $("x-install-help");
+  if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) return;  // already installed: no button
+  btn.hidden = false;
+  addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installEv = ev; });
+  addEventListener("appinstalled", () => { installEv = null; btn.hidden = true; help.hidden = true; });
+  btn.addEventListener("click", async () => {
     const ev = installEv;
-    if (!ev) return;
-    installEv = null;
-    $("x-install").hidden = true;
+    if (!ev) { help.textContent = installHelp(); help.hidden = false; track("trackEvent", "pwa", "install_help", "shown"); return; }
+    installEv = null;  // a prompt event is single-use; the browser fires a new one after a dismissal
     ev.prompt();
-    ev.userChoice.then(c => track("trackEvent", "pwa", "install_prompt", c.outcome));
+    const c = await ev.userChoice;
+    track("trackEvent", "pwa", "install_prompt", c.outcome);
+    if (c.outcome !== "accepted") { help.textContent = installHelp(); help.hidden = false; }
   });
 }
 
