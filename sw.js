@@ -1,6 +1,6 @@
 "use strict";
 // Written by build_site.py. VERSION changes with every build of the pages, so each weekly snapshot gets a fresh cache.
-const VERSION = "7665e65b";
+const VERSION = "f1757265";
 const PRECACHE = ["/", "/app.js?v=6f576666", "/style.css?v=34a6ba87", "/fonts/vazirmatn-subset.woff2", "/manifest.webmanifest", "/icons/icon-192.png"];
 const CACHE = `rent-${VERSION}`;
 self.addEventListener("install", ev => {
